@@ -71,7 +71,8 @@ class FakeTransportChannel : public TransportChannelImpl,
         tiebreaker_(0),
         ice_proto_(ICEPROTO_HYBRID),
         remote_ice_mode_(ICEMODE_FULL),
-        dtls_fingerprint_("", NULL, 0) {
+        dtls_fingerprint_("", NULL, 0),
+        ssl_role_(talk_base::SSL_CLIENT) {
   }
   ~FakeTransportChannel() {
     Reset();
@@ -115,6 +116,14 @@ class FakeTransportChannel : public TransportChannelImpl,
   virtual bool SetRemoteFingerprint(const std::string& alg, const uint8* digest,
                                     size_t digest_len) {
     dtls_fingerprint_ = talk_base::SSLFingerprint(alg, digest, digest_len);
+    return true;
+  }
+  virtual bool SetSslRole(talk_base::SSLRole role) {
+    ssl_role_ = role;
+    return true;
+  }
+  virtual bool GetSslRole(talk_base::SSLRole* role) const {
+    *role = ssl_role_;
     return true;
   }
 
@@ -199,7 +208,6 @@ class FakeTransportChannel : public TransportChannelImpl,
 
   bool SetLocalIdentity(talk_base::SSLIdentity* identity) {
     identity_ = identity;
-
     return true;
   }
 
@@ -275,6 +283,7 @@ class FakeTransportChannel : public TransportChannelImpl,
   std::string remote_ice_pwd_;
   IceMode remote_ice_mode_;
   talk_base::SSLFingerprint dtls_fingerprint_;
+  talk_base::SSLRole ssl_role_;
 };
 
 // Fake transport class, which can be passed to anything that needs a Transport.
