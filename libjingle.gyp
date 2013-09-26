@@ -229,6 +229,7 @@
           'link_settings': {
             'libraries': [
               '$(SDKROOT)/System/Library/Frameworks/Foundation.framework',
+              '-lstdc++',
             ],
           },
           'xcode_settings': {
@@ -1136,8 +1137,6 @@
         'app/webrtc/jsepsessiondescription.h',
         'app/webrtc/localaudiosource.cc',
         'app/webrtc/localaudiosource.h',
-        'app/webrtc/localvideosource.cc',
-        'app/webrtc/localvideosource.h',
         'app/webrtc/mediaconstraintsinterface.cc',
         'app/webrtc/mediaconstraintsinterface.h',
         'app/webrtc/mediastream.cc',
@@ -1161,10 +1160,14 @@
         'app/webrtc/portallocatorfactory.cc',
         'app/webrtc/portallocatorfactory.h',
         'app/webrtc/proxy.h',
+        'app/webrtc/remotevideocapturer.cc',
+        'app/webrtc/remotevideocapturer.h',
         'app/webrtc/statscollector.cc',
         'app/webrtc/statscollector.h',
         'app/webrtc/statstypes.h',
         'app/webrtc/streamcollection.h',
+        'app/webrtc/videosource.cc',
+        'app/webrtc/videosource.h',
         'app/webrtc/videosourceinterface.h',
         'app/webrtc/videosourceproxy.h',
         'app/webrtc/videotrack.cc',

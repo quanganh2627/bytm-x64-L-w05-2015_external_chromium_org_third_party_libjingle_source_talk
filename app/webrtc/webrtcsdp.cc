@@ -42,6 +42,7 @@
 #include "talk/media/base/codec.h"
 #include "talk/media/base/constants.h"
 #include "talk/media/base/cryptoparams.h"
+#include "talk/media/sctp/sctpdataengine.h"
 #include "talk/p2p/base/candidate.h"
 #include "talk/p2p/base/constants.h"
 #include "talk/p2p/base/port.h"
@@ -2121,7 +2122,7 @@ bool ParseMediaDescription(const std::string& message,
       // this for backwards-compatibility.  Once we don't need that any
       // more, remove this.
       bool support_dc_sdp_bandwidth_temporarily = true;
-      if (!support_dc_sdp_bandwidth_temporarily) {
+      if (content.get() && !support_dc_sdp_bandwidth_temporarily) {
         content->set_bandwidth(cricket::kAutoBandwidth);
       }
     } else {

@@ -275,7 +275,8 @@ class WebRtcSessionTest : public testing::Test {
       ss_scope_(fss_.get()),
       stun_server_(talk_base::Thread::Current(), kStunAddr),
       allocator_(&network_manager_, kStunAddr,
-                 SocketAddress(), SocketAddress(), SocketAddress()) {
+                 SocketAddress(), SocketAddress(), SocketAddress()),
+      mediastream_signaling_(channel_manager_.get()) {
     tdesc_factory_->set_protocol(cricket::ICEPROTO_HYBRID);
     allocator_.set_flags(cricket::PORTALLOCATOR_DISABLE_TCP |
                          cricket::PORTALLOCATOR_DISABLE_RELAY |
@@ -2486,6 +2487,8 @@ TEST_F(WebRtcSessionTest, TestRtpDataChannelConstraintTakesPrecedence) {
 }
 
 TEST_F(WebRtcSessionTest, TestCreateOfferWithSctpEnabledWithoutStreams) {
+  MAYBE_SKIP_TEST(talk_base::SSLStreamAdapter::HaveDtlsSrtp);
+
   constraints_.reset(new FakeConstraints());
   constraints_->AddOptional(
       webrtc::MediaConstraintsInterface::kEnableSctpDataChannels, true);
@@ -2493,6 +2496,29 @@ TEST_F(WebRtcSessionTest, TestCreateOfferWithSctpEnabledWithoutStreams) {
 
   talk_base::scoped_ptr<SessionDescriptionInterface> offer(CreateOffer(NULL));
   EXPECT_TRUE(offer->description()->GetContentByName("data") == NULL);
+  EXPECT_TRUE(offer->description()->GetTransportInfoByName("data") == NULL);
+}
+
+TEST_F(WebRtcSessionTest, TestCreateAnswerWithSctpInOfferAndNoStreams) {
+  MAYBE_SKIP_TEST(talk_base::SSLStreamAdapter::HaveDtlsSrtp);
+  SetFactoryDtlsSrtp();
+  constraints_.reset(new FakeConstraints());
+  constraints_->AddOptional(
+      webrtc::MediaConstraintsInterface::kEnableSctpDataChannels, true);
+  InitWithDtls(false);
+
+  // Create remote offer with SCTP.
+  cricket::MediaSessionOptions options;
+  options.data_channel_type = cricket::DCT_SCTP;
+  JsepSessionDescription* offer =
+      CreateRemoteOffer(options, cricket::SEC_ENABLED);
+  SetRemoteDescriptionWithoutError(offer);
+
+  // Verifies the answer contains SCTP.
+  talk_base::scoped_ptr<SessionDescriptionInterface> answer(CreateAnswer(NULL));
+  EXPECT_TRUE(answer != NULL);
+  EXPECT_TRUE(answer->description()->GetContentByName("data") != NULL);
+  EXPECT_TRUE(answer->description()->GetTransportInfoByName("data") != NULL);
 }
 
 TEST_F(WebRtcSessionTest, TestSctpDataChannelWithoutDtls) {

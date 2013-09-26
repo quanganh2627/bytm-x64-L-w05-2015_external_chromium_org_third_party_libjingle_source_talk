@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2011, Google Inc.
+ * Copyright 2013, Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -24,51 +24,39 @@
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include "talk/app/webrtc/videotrack.h"
 
-#include <string>
+#ifndef TALK_BASE_DSCP_H_
+#define TALK_BASE_DSCP_H_
 
-#include "talk/media/webrtc/webrtcvideocapturer.h"
+namespace talk_base {
+// Differentiated Services Code Point.
+// See http://tools.ietf.org/html/rfc2474 for details.
+enum DiffServCodePoint {
+  DSCP_NO_CHANGE = -1,
+  DSCP_DEFAULT = 0,  // Same as DSCP_CS0
+  DSCP_CS0  = 0,   // The default
+  DSCP_CS1  = 8,   // Bulk/background traffic
+  DSCP_AF11 = 10,
+  DSCP_AF12 = 12,
+  DSCP_AF13 = 14,
+  DSCP_CS2  = 16,
+  DSCP_AF21 = 18,
+  DSCP_AF22 = 20,
+  DSCP_AF23 = 22,
+  DSCP_CS3  = 24,
+  DSCP_AF31 = 26,
+  DSCP_AF32 = 28,
+  DSCP_AF33 = 30,
+  DSCP_CS4  = 32,
+  DSCP_AF41 = 34,  // Video
+  DSCP_AF42 = 36,  // Video
+  DSCP_AF43 = 38,  // Video
+  DSCP_CS5  = 40,  // Video
+  DSCP_EF   = 46,  // Voice
+  DSCP_CS6  = 48,  // Voice
+  DSCP_CS7  = 56,  // Control messages
+};
 
-namespace webrtc {
+}  // namespace talk_base
 
-static const char kVideoTrackKind[] = "video";
-
-VideoTrack::VideoTrack(const std::string& label,
-                       VideoSourceInterface* video_source)
-    : MediaStreamTrack<VideoTrackInterface>(label),
-      video_source_(video_source) {
-  if (video_source_)
-    video_source_->AddSink(&renderers_);
-}
-
-VideoTrack::~VideoTrack() {
-  if (video_source_)
-    video_source_->RemoveSink(&renderers_);
-}
-
-std::string VideoTrack::kind() const {
-  return kVideoTrackKind;
-}
-
-void VideoTrack::AddRenderer(VideoRendererInterface* renderer) {
-  renderers_.AddRenderer(renderer);
-}
-
-void VideoTrack::RemoveRenderer(VideoRendererInterface* renderer) {
-  renderers_.RemoveRenderer(renderer);
-}
-
-bool VideoTrack::set_enabled(bool enable) {
-  renderers_.SetEnabled(enable);
-  return MediaStreamTrack<VideoTrackInterface>::set_enabled(enable);
-}
-
-talk_base::scoped_refptr<VideoTrack> VideoTrack::Create(
-    const std::string& id, VideoSourceInterface* source) {
-  talk_base::RefCountedObject<VideoTrack>* track =
-      new talk_base::RefCountedObject<VideoTrack>(id, source);
-  return track;
-}
-
-}  // namespace webrtc
+ #endif  // TALK_BASE_DSCP_H_

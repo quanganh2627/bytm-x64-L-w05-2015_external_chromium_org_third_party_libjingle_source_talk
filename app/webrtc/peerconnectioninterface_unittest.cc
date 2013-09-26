@@ -29,18 +29,19 @@
 
 #include "talk/app/webrtc/fakeportallocatorfactory.h"
 #include "talk/app/webrtc/jsepsessiondescription.h"
-#include "talk/app/webrtc/localvideosource.h"
 #include "talk/app/webrtc/mediastreaminterface.h"
 #include "talk/app/webrtc/peerconnectioninterface.h"
 #include "talk/app/webrtc/test/fakeconstraints.h"
 #include "talk/app/webrtc/test/mockpeerconnectionobservers.h"
 #include "talk/app/webrtc/test/testsdpstrings.h"
+#include "talk/app/webrtc/videosource.h"
 #include "talk/base/gunit.h"
 #include "talk/base/scoped_ptr.h"
 #include "talk/base/sslstreamadapter.h"
 #include "talk/base/stringutils.h"
 #include "talk/base/thread.h"
 #include "talk/media/base/fakevideocapturer.h"
+#include "talk/media/sctp/sctpdataengine.h"
 #include "talk/session/media/mediasession.h"
 
 static const char kStreamLabel1[] = "local_stream_1";
