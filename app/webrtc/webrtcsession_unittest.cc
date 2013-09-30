@@ -86,6 +86,7 @@ using webrtc::StreamCollection;
 using webrtc::WebRtcSession;
 using webrtc::kMlineMismatch;
 using webrtc::kSdpWithoutCrypto;
+using webrtc::kSdpWithoutSdesAndDtlsDisabled;
 using webrtc::kSessionError;
 using webrtc::kSetLocalSdpFailed;
 using webrtc::kSetRemoteSdpFailed;
@@ -113,6 +114,10 @@ static const cricket::AudioCodec
     kTelephoneEventCodec(106, "telephone-event", 8000, 0, 1, 0);
 static const cricket::AudioCodec kCNCodec1(102, "CN", 8000, 0, 1, 0);
 static const cricket::AudioCodec kCNCodec2(103, "CN", 16000, 0, 1, 0);
+
+static const char kFakeDtlsFingerprint[] =
+    "BB:CD:72:F7:2F:D0:BA:43:F3:68:B1:0C:23:72:B6:4A:"
+    "0F:DE:34:06:BC:E0:FE:01:BC:73:C8:6D:F4:65:D5:24";
 
 // Add some extra |newlines| to the |message| after |line|.
 static void InjectAfter(const std::string& line,
@@ -1872,8 +1877,10 @@ TEST_F(WebRtcSessionTest, VerifyCryptoParamsInSDP) {
 }
 
 TEST_F(WebRtcSessionTest, VerifyNoCryptoParamsInSDP) {
+  constraints_.reset(new FakeConstraints());
+  constraints_->AddOptional(
+      webrtc::MediaConstraintsInterface::kInternalDisableEncryption, true);
   Init(NULL);
-  session_->set_secure_policy(cricket::SEC_DISABLED);
   mediastream_signaling_.SendAudioVideoStream1();
   scoped_ptr<SessionDescriptionInterface> offer(
         CreateOffer(NULL));
@@ -2337,9 +2344,11 @@ TEST_F(WebRtcSessionTest, TestCryptoAfterSetLocalDescription) {
 
 // This test verifies the crypto parameter when security is disabled.
 TEST_F(WebRtcSessionTest, TestCryptoAfterSetLocalDescriptionWithDisabled) {
+  constraints_.reset(new FakeConstraints());
+  constraints_->AddOptional(
+      webrtc::MediaConstraintsInterface::kInternalDisableEncryption, true);
   Init(NULL);
   mediastream_signaling_.SendAudioVideoStream1();
-  session_->set_secure_policy(cricket::SEC_DISABLED);
   talk_base::scoped_ptr<SessionDescriptionInterface> offer(
       CreateOffer(NULL));
 
@@ -2629,6 +2638,28 @@ TEST_F(WebRtcSessionTest,
   VerifyMultipleAsyncCreateDescription(
       false, CreateSessionDescriptionRequest::kAnswer);
 }
+
+// Verifies that setRemoteDescription fails when DTLS is disabled and the remote
+// offer has no SDES crypto but only DTLS fingerprint.
+TEST_F(WebRtcSessionTest, TestSetRemoteOfferFailIfDtlsDisabledAndNoCrypto) {
+  // Init without DTLS.
+  Init(NULL);
+  // Create a remote offer with secured transport disabled.
+  cricket::MediaSessionOptions options;
+  JsepSessionDescription* offer(CreateRemoteOffer(
+      options, cricket::SEC_DISABLED));
+  // Adds a DTLS fingerprint to the remote offer.
+  cricket::SessionDescription* sdp = offer->description();
+  TransportInfo* audio = sdp->GetTransportInfoByName("audio");
+  ASSERT_TRUE(audio != NULL);
+  ASSERT_TRUE(audio->description.identity_fingerprint.get() == NULL);
+  audio->description.identity_fingerprint.reset(
+      talk_base::SSLFingerprint::CreateFromRfc4572(
+          talk_base::DIGEST_SHA_256, kFakeDtlsFingerprint));
+  SetRemoteDescriptionExpectError(kSdpWithoutSdesAndDtlsDisabled,
+                                  offer);
+}
+
 // TODO(bemasc): Add a TestIceStatesBundle with BUNDLE enabled.  That test
 // currently fails because upon disconnection and reconnection OnIceComplete is
 // called more than once without returning to IceGatheringGathering.
