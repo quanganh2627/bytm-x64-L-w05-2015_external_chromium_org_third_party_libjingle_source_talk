@@ -38,11 +38,16 @@
 #include "talk/base/stringutils.h"
 #include "talk/media/base/constants.h"
 #include "talk/media/base/cryptoparams.h"
-#include "talk/media/sctp/sctpdataengine.h"
 #include "talk/p2p/base/constants.h"
 #include "talk/session/media/channelmanager.h"
 #include "talk/session/media/srtpfilter.h"
 #include "talk/xmpp/constants.h"
+
+#ifdef HAVE_SCTP
+#include "talk/media/sctp/sctpdataengine.h"
+#else
+static const uint32 kMaxSctpSid = USHRT_MAX;
+#endif
 
 namespace {
 const char kInline[] = "inline:";
@@ -594,6 +599,7 @@ static bool UpdateCryptoParamsForBundle(const ContentGroup& bundle_group,
     return false;
   }
 
+  bool common_cryptos_needed = false;
   // Get the common cryptos.
   const ContentNames& content_names = bundle_group.content_names();
   CryptoParamsVec common_cryptos;
@@ -601,6 +607,11 @@ static bool UpdateCryptoParamsForBundle(const ContentGroup& bundle_group,
        it != content_names.end(); ++it) {
     if (!IsRtpContent(sdesc, *it)) {
       continue;
+    }
+    // The common cryptos are needed if any of the content does not have DTLS
+    // enabled.
+    if (!sdesc->GetTransportInfoByName(*it)->description.secure()) {
+      common_cryptos_needed = true;
     }
     if (it == content_names.begin()) {
       // Initial the common_cryptos with the first content in the bundle group.
@@ -620,7 +631,7 @@ static bool UpdateCryptoParamsForBundle(const ContentGroup& bundle_group,
     }
   }
 
-  if (common_cryptos.empty()) {
+  if (common_cryptos.empty() && common_cryptos_needed) {
     return false;
   }
 
@@ -967,6 +978,42 @@ static void SetMediaProtocol(bool secure_transport,
     desc->set_protocol(kMediaProtocolAvpf);
 }
 
+// Gets the TransportInfo of the given |content_name| from the
+// |current_description|. If doesn't exist, returns a new one.
+static const TransportDescription* GetTransportDescription(
+    const std::string& content_name,
+    const SessionDescription* current_description) {
+  const TransportDescription* desc = NULL;
+  if (current_description) {
+    const TransportInfo* info =
+        current_description->GetTransportInfoByName(content_name);
+    if (info) {
+      desc = &info->description;
+    }
+  }
+  return desc;
+}
+
+// Gets the current DTLS state from the transport description.
+static bool IsDtlsActive(
+    const std::string& content_name,
+    const SessionDescription* current_description) {
+  if (!current_description)
+    return false;
+
+  const ContentInfo* content =
+      current_description->GetContentByName(content_name);
+  if (!content)
+    return false;
+
+  const TransportDescription* current_tdesc =
+      GetTransportDescription(content_name, current_description);
+  if (!current_tdesc)
+    return false;
+
+  return current_tdesc->secure();
+}
+
 void MediaSessionOptions::AddStream(MediaType type,
                                     const std::string& id,
                                     const std::string& sync_label) {
@@ -1042,13 +1089,17 @@ SessionDescription* MediaSessionDescriptionFactory::CreateOffer(
 
   // Handle m=audio.
   if (options.has_audio) {
+    cricket::SecurePolicy sdes_policy =
+        IsDtlsActive(CN_AUDIO, current_description) ?
+            cricket::SEC_DISABLED : secure();
+
     scoped_ptr<AudioContentDescription> audio(new AudioContentDescription());
     std::vector<std::string> crypto_suites;
     GetSupportedAudioCryptoSuites(&crypto_suites);
     if (!CreateMediaContentOffer(
             options,
             audio_codecs,
-            secure(),
+            sdes_policy,
             GetCryptos(GetFirstAudioContentDescription(current_description)),
             crypto_suites,
             audio_rtp_extensions,
@@ -1069,13 +1120,17 @@ SessionDescription* MediaSessionDescriptionFactory::CreateOffer(
 
   // Handle m=video.
   if (options.has_video) {
+    cricket::SecurePolicy sdes_policy =
+        IsDtlsActive(CN_VIDEO, current_description) ?
+            cricket::SEC_DISABLED : secure();
+
     scoped_ptr<VideoContentDescription> video(new VideoContentDescription());
     std::vector<std::string> crypto_suites;
     GetSupportedVideoCryptoSuites(&crypto_suites);
     if (!CreateMediaContentOffer(
             options,
             video_codecs,
-            secure(),
+            sdes_policy,
             GetCryptos(GetFirstVideoContentDescription(current_description)),
             crypto_suites,
             video_rtp_extensions,
@@ -1099,8 +1154,10 @@ SessionDescription* MediaSessionDescriptionFactory::CreateOffer(
     scoped_ptr<DataContentDescription> data(new DataContentDescription());
     bool is_sctp = (options.data_channel_type == DCT_SCTP);
 
+    cricket::SecurePolicy sdes_policy =
+        IsDtlsActive(CN_DATA, current_description) ?
+            cricket::SEC_DISABLED : secure();
     std::vector<std::string> crypto_suites;
-    cricket::SecurePolicy sdes_policy = secure();
     if (is_sctp) {
       // SDES doesn't make sense for SCTP, so we disable it, and we only
       // get SDES crypto suites for RTP-based data channels.
@@ -1358,22 +1415,6 @@ SessionDescription* MediaSessionDescriptionFactory::CreateAnswer(
   }
 
   return answer.release();
-}
-
-// Gets the TransportInfo of the given |content_name| from the
-// |current_description|. If doesn't exist, returns a new one.
-static const TransportDescription* GetTransportDescription(
-    const std::string& content_name,
-    const SessionDescription* current_description) {
-  const TransportDescription* desc = NULL;
-  if (current_description) {
-    const TransportInfo* info =
-        current_description->GetTransportInfoByName(content_name);
-    if (info) {
-      desc = &info->description;
-    }
-  }
-  return desc;
 }
 
 void MediaSessionDescriptionFactory::GetCodecsToOffer(

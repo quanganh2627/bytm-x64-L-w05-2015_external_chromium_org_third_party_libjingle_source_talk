@@ -294,7 +294,8 @@ TEST_F(WebRtcVoiceEngineTestFake, StartupShutdown) {
   EXPECT_FALSE(voe_sc_.IsInited());
   EXPECT_TRUE(engine_.Init(talk_base::Thread::Current()));
   EXPECT_TRUE(voe_.IsInited());
-  EXPECT_TRUE(voe_sc_.IsInited());
+  // The soundclip engine is lazily initialized.
+  EXPECT_FALSE(voe_sc_.IsInited());
   engine_.Terminate();
   EXPECT_FALSE(voe_.IsInited());
   EXPECT_FALSE(voe_sc_.IsInited());
@@ -2044,6 +2045,26 @@ TEST_F(WebRtcVoiceEngineTestFake, StreamCleanup) {
   EXPECT_EQ(0, voe_.GetNumChannels());
 }
 
+TEST_F(WebRtcVoiceEngineTestFake, TestAddRecvStreamFailWithZeroSsrc) {
+  EXPECT_TRUE(SetupEngine());
+  EXPECT_FALSE(channel_->AddRecvStream(cricket::StreamParams::CreateLegacy(0)));
+}
+
+TEST_F(WebRtcVoiceEngineTestFake, TestNoLeakingWhenAddRecvStreamFail) {
+  EXPECT_TRUE(SetupEngine());
+  // Stream 1 reuses default channel.
+  EXPECT_TRUE(channel_->AddRecvStream(cricket::StreamParams::CreateLegacy(1)));
+  // Manually delete default channel to simulate a failure.
+  int default_channel = voe_.GetLastChannel();
+  EXPECT_EQ(0, voe_.DeleteChannel(default_channel));
+  // Add recv stream 2 should fail because default channel is gone.
+  EXPECT_FALSE(channel_->AddRecvStream(cricket::StreamParams::CreateLegacy(2)));
+  int new_channel = voe_.GetLastChannel();
+  EXPECT_NE(default_channel, new_channel);
+  // The last created channel should have already been deleted.
+  EXPECT_EQ(-1, voe_.DeleteChannel(new_channel));
+}
+
 // Test the InsertDtmf on default send stream as caller.
 TEST_F(WebRtcVoiceEngineTestFake, InsertDtmfOnDefaultSendStreamAsCaller) {
   TestInsertDtmf(0, true);
@@ -2122,7 +2143,9 @@ TEST_F(WebRtcVoiceEngineTestFake, PlayRingbackWithMultipleStreams) {
 // Tests creating soundclips, and make sure they come from the right engine.
 TEST_F(WebRtcVoiceEngineTestFake, CreateSoundclip) {
   EXPECT_TRUE(engine_.Init(talk_base::Thread::Current()));
+  EXPECT_FALSE(voe_sc_.IsInited());
   soundclip_ = engine_.CreateSoundclip();
+  EXPECT_TRUE(voe_sc_.IsInited());
   ASSERT_TRUE(soundclip_ != NULL);
   EXPECT_EQ(0, voe_.GetNumChannels());
   EXPECT_EQ(1, voe_sc_.GetNumChannels());
@@ -2131,6 +2154,10 @@ TEST_F(WebRtcVoiceEngineTestFake, CreateSoundclip) {
   delete soundclip_;
   soundclip_ = NULL;
   EXPECT_EQ(0, voe_sc_.GetNumChannels());
+  // Make sure the soundclip engine is uninitialized on shutdown, now that
+  // we've initialized it by creating a soundclip.
+  engine_.Terminate();
+  EXPECT_FALSE(voe_sc_.IsInited());
 }
 
 // Tests playing out a fake sound.
@@ -2321,7 +2348,7 @@ TEST_F(WebRtcVoiceEngineTestFake, SetAudioOptions) {
 
   // Nothing set, so all ignored.
   cricket::AudioOptions options;
-  ASSERT_TRUE(engine_.SetAudioOptions(options));
+  ASSERT_TRUE(engine_.SetOptions(options));
   voe_.GetEcStatus(ec_enabled, ec_mode);
   voe_.GetEcMetricsStatus(ec_metrics_enabled);
   voe_.GetAecmMode(aecm_mode, cng_enabled);
@@ -2345,14 +2372,14 @@ TEST_F(WebRtcVoiceEngineTestFake, SetAudioOptions) {
 
   // Turn echo cancellation off
   options.echo_cancellation.Set(false);
-  ASSERT_TRUE(engine_.SetAudioOptions(options));
+  ASSERT_TRUE(engine_.SetOptions(options));
   voe_.GetEcStatus(ec_enabled, ec_mode);
   EXPECT_FALSE(ec_enabled);
 
   // Turn echo cancellation back on, with settings, and make sure
   // nothing else changed.
   options.echo_cancellation.Set(true);
-  ASSERT_TRUE(engine_.SetAudioOptions(options));
+  ASSERT_TRUE(engine_.SetOptions(options));
   voe_.GetEcStatus(ec_enabled, ec_mode);
   voe_.GetEcMetricsStatus(ec_metrics_enabled);
   voe_.GetAecmMode(aecm_mode, cng_enabled);
@@ -2375,14 +2402,14 @@ TEST_F(WebRtcVoiceEngineTestFake, SetAudioOptions) {
 
   // Turn off AGC
   options.auto_gain_control.Set(false);
-  ASSERT_TRUE(engine_.SetAudioOptions(options));
+  ASSERT_TRUE(engine_.SetOptions(options));
   voe_.GetAgcStatus(agc_enabled, agc_mode);
   EXPECT_FALSE(agc_enabled);
 
   // Turn AGC back on
   options.auto_gain_control.Set(true);
   options.adjust_agc_delta.Clear();
-  ASSERT_TRUE(engine_.SetAudioOptions(options));
+  ASSERT_TRUE(engine_.SetOptions(options));
   voe_.GetAgcStatus(agc_enabled, agc_mode);
   EXPECT_TRUE(agc_enabled);
   voe_.GetAgcConfig(agc_config);
@@ -2393,7 +2420,7 @@ TEST_F(WebRtcVoiceEngineTestFake, SetAudioOptions) {
   options.highpass_filter.Set(false);
   options.typing_detection.Set(false);
   options.stereo_swapping.Set(true);
-  ASSERT_TRUE(engine_.SetAudioOptions(options));
+  ASSERT_TRUE(engine_.SetOptions(options));
   voe_.GetNsStatus(ns_enabled, ns_mode);
   highpass_filter_enabled = voe_.IsHighPassFilterEnabled();
   stereo_swapping_enabled = voe_.IsStereoChannelSwappingEnabled();
@@ -2405,7 +2432,7 @@ TEST_F(WebRtcVoiceEngineTestFake, SetAudioOptions) {
 
   // Turn on "conference mode" to ensure it has no impact.
   options.conference_mode.Set(true);
-  ASSERT_TRUE(engine_.SetAudioOptions(options));
+  ASSERT_TRUE(engine_.SetOptions(options));
   voe_.GetEcStatus(ec_enabled, ec_mode);
   voe_.GetNsStatus(ns_enabled, ns_mode);
   EXPECT_TRUE(ec_enabled);
@@ -2414,7 +2441,7 @@ TEST_F(WebRtcVoiceEngineTestFake, SetAudioOptions) {
   EXPECT_EQ(webrtc::kNsHighSuppression, ns_mode);
 }
 
-TEST_F(WebRtcVoiceEngineTestFake, SetOptions) {
+TEST_F(WebRtcVoiceEngineTestFake, DefaultOptions) {
   EXPECT_TRUE(SetupEngine());
 
   bool ec_enabled;
@@ -2428,103 +2455,6 @@ TEST_F(WebRtcVoiceEngineTestFake, SetOptions) {
   bool stereo_swapping_enabled;
   bool typing_detection_enabled;
 
-  ASSERT_TRUE(engine_.SetOptions(0));
-  voe_.GetEcStatus(ec_enabled, ec_mode);
-  voe_.GetEcMetricsStatus(ec_metrics_enabled);
-  voe_.GetAgcStatus(agc_enabled, agc_mode);
-  voe_.GetNsStatus(ns_enabled, ns_mode);
-  highpass_filter_enabled = voe_.IsHighPassFilterEnabled();
-  stereo_swapping_enabled = voe_.IsStereoChannelSwappingEnabled();
-  voe_.GetTypingDetectionStatus(typing_detection_enabled);
-  EXPECT_FALSE(ec_enabled);
-  EXPECT_FALSE(agc_enabled);
-  EXPECT_FALSE(ns_enabled);
-  EXPECT_FALSE(highpass_filter_enabled);
-  EXPECT_FALSE(stereo_swapping_enabled);
-  EXPECT_TRUE(typing_detection_enabled);
-
-  ASSERT_TRUE(engine_.SetOptions(
-      cricket::MediaEngineInterface::ECHO_CANCELLATION));
-  voe_.GetEcStatus(ec_enabled, ec_mode);
-  voe_.GetEcMetricsStatus(ec_metrics_enabled);
-  voe_.GetAgcStatus(agc_enabled, agc_mode);
-  voe_.GetNsStatus(ns_enabled, ns_mode);
-  highpass_filter_enabled = voe_.IsHighPassFilterEnabled();
-  stereo_swapping_enabled = voe_.IsStereoChannelSwappingEnabled();
-  voe_.GetTypingDetectionStatus(typing_detection_enabled);
-  EXPECT_TRUE(ec_enabled);
-  EXPECT_FALSE(agc_enabled);
-  EXPECT_FALSE(ns_enabled);
-  EXPECT_FALSE(highpass_filter_enabled);
-  EXPECT_FALSE(stereo_swapping_enabled);
-  EXPECT_TRUE(typing_detection_enabled);
-
-  ASSERT_TRUE(engine_.SetOptions(
-      cricket::MediaEngineInterface::AUTO_GAIN_CONTROL));
-  voe_.GetEcStatus(ec_enabled, ec_mode);
-  voe_.GetEcMetricsStatus(ec_metrics_enabled);
-  voe_.GetAgcStatus(agc_enabled, agc_mode);
-  voe_.GetNsStatus(ns_enabled, ns_mode);
-  highpass_filter_enabled = voe_.IsHighPassFilterEnabled();
-  stereo_swapping_enabled = voe_.IsStereoChannelSwappingEnabled();
-  voe_.GetTypingDetectionStatus(typing_detection_enabled);
-  EXPECT_FALSE(ec_enabled);
-  EXPECT_TRUE(agc_enabled);
-  EXPECT_FALSE(ns_enabled);
-  EXPECT_FALSE(highpass_filter_enabled);
-  EXPECT_FALSE(stereo_swapping_enabled);
-  EXPECT_TRUE(typing_detection_enabled);
-
-  ASSERT_TRUE(engine_.SetOptions(
-      cricket::MediaEngineInterface::NOISE_SUPPRESSION));
-  voe_.GetEcStatus(ec_enabled, ec_mode);
-  voe_.GetEcMetricsStatus(ec_metrics_enabled);
-  voe_.GetAgcStatus(agc_enabled, agc_mode);
-  voe_.GetNsStatus(ns_enabled, ns_mode);
-  highpass_filter_enabled = voe_.IsHighPassFilterEnabled();
-  stereo_swapping_enabled = voe_.IsStereoChannelSwappingEnabled();
-  voe_.GetTypingDetectionStatus(typing_detection_enabled);
-  EXPECT_FALSE(ec_enabled);
-  EXPECT_FALSE(agc_enabled);
-  EXPECT_TRUE(ns_enabled);
-  EXPECT_FALSE(highpass_filter_enabled);
-  EXPECT_FALSE(stereo_swapping_enabled);
-  EXPECT_TRUE(typing_detection_enabled);
-
-  ASSERT_TRUE(engine_.SetOptions(
-      cricket::MediaEngineInterface::HIGHPASS_FILTER));
-  voe_.GetEcStatus(ec_enabled, ec_mode);
-  voe_.GetEcMetricsStatus(ec_metrics_enabled);
-  voe_.GetAgcStatus(agc_enabled, agc_mode);
-  voe_.GetNsStatus(ns_enabled, ns_mode);
-  highpass_filter_enabled = voe_.IsHighPassFilterEnabled();
-  stereo_swapping_enabled = voe_.IsStereoChannelSwappingEnabled();
-  voe_.GetTypingDetectionStatus(typing_detection_enabled);
-  EXPECT_FALSE(ec_enabled);
-  EXPECT_FALSE(agc_enabled);
-  EXPECT_FALSE(ns_enabled);
-  EXPECT_TRUE(highpass_filter_enabled);
-  EXPECT_FALSE(stereo_swapping_enabled);
-  EXPECT_TRUE(typing_detection_enabled);
-
-  ASSERT_TRUE(engine_.SetOptions(
-      cricket::MediaEngineInterface::STEREO_FLIPPING));
-  voe_.GetEcStatus(ec_enabled, ec_mode);
-  voe_.GetEcMetricsStatus(ec_metrics_enabled);
-  voe_.GetAgcStatus(agc_enabled, agc_mode);
-  voe_.GetNsStatus(ns_enabled, ns_mode);
-  highpass_filter_enabled = voe_.IsHighPassFilterEnabled();
-  stereo_swapping_enabled = voe_.IsStereoChannelSwappingEnabled();
-  voe_.GetTypingDetectionStatus(typing_detection_enabled);
-  EXPECT_FALSE(ec_enabled);
-  EXPECT_FALSE(agc_enabled);
-  EXPECT_FALSE(ns_enabled);
-  EXPECT_FALSE(highpass_filter_enabled);
-  EXPECT_TRUE(stereo_swapping_enabled);
-  EXPECT_TRUE(typing_detection_enabled);
-
-  ASSERT_TRUE(engine_.SetOptions(
-      cricket::MediaEngineInterface::DEFAULT_AUDIO_OPTIONS));
   voe_.GetEcStatus(ec_enabled, ec_mode);
   voe_.GetEcMetricsStatus(ec_metrics_enabled);
   voe_.GetAgcStatus(agc_enabled, agc_mode);
@@ -2536,24 +2466,8 @@ TEST_F(WebRtcVoiceEngineTestFake, SetOptions) {
   EXPECT_TRUE(agc_enabled);
   EXPECT_TRUE(ns_enabled);
   EXPECT_TRUE(highpass_filter_enabled);
+  EXPECT_TRUE(typing_detection_enabled);
   EXPECT_FALSE(stereo_swapping_enabled);
-  EXPECT_TRUE(typing_detection_enabled);
-
-  ASSERT_TRUE(engine_.SetOptions(
-      cricket::MediaEngineInterface::ALL_AUDIO_OPTIONS));
-  voe_.GetEcStatus(ec_enabled, ec_mode);
-  voe_.GetEcMetricsStatus(ec_metrics_enabled);
-  voe_.GetAgcStatus(agc_enabled, agc_mode);
-  voe_.GetNsStatus(ns_enabled, ns_mode);
-  highpass_filter_enabled = voe_.IsHighPassFilterEnabled();
-  stereo_swapping_enabled = voe_.IsStereoChannelSwappingEnabled();
-  voe_.GetTypingDetectionStatus(typing_detection_enabled);
-  EXPECT_TRUE(ec_enabled);
-  EXPECT_TRUE(agc_enabled);
-  EXPECT_TRUE(ns_enabled);
-  EXPECT_TRUE(highpass_filter_enabled);
-  EXPECT_TRUE(stereo_swapping_enabled);
-  EXPECT_TRUE(typing_detection_enabled);
 }
 
 TEST_F(WebRtcVoiceEngineTestFake, InitDoesNotOverwriteDefaultAgcConfig) {
@@ -2625,7 +2539,7 @@ TEST_F(WebRtcVoiceEngineTestFake, SetOptionOverridesViaChannels) {
   ASSERT_TRUE(channel2->GetOptions(&actual_options));
   EXPECT_EQ(expected_options, actual_options);
 
-  ASSERT_TRUE(engine_.SetAudioOptions(options_all));
+  ASSERT_TRUE(engine_.SetOptions(options_all));
   bool ec_enabled;
   webrtc::EcModes ec_mode;
   bool agc_enabled;
@@ -2672,7 +2586,7 @@ TEST_F(WebRtcVoiceEngineTestFake, SetOptionOverridesViaChannels) {
   EXPECT_TRUE(ns_enabled);
 
   // Make sure settings take effect while we are sending.
-  ASSERT_TRUE(engine_.SetAudioOptions(options_all));
+  ASSERT_TRUE(engine_.SetOptions(options_all));
   cricket::AudioOptions options_no_agc_nor_ns;
   options_no_agc_nor_ns.auto_gain_control.Set(false);
   options_no_agc_nor_ns.noise_suppression.Set(false);

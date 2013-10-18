@@ -159,8 +159,8 @@ class Functor2 {
   bool* flag_;
 };
 
-
-TEST(ThreadTest, Main) {
+// See: https://code.google.com/p/webrtc/issues/detail?id=2409
+TEST(ThreadTest, DISABLED_Main) {
   const SocketAddress addr("127.0.0.1", 0);
 
   // Create the messaging client on its own thread.

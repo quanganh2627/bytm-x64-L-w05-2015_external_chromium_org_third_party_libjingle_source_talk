@@ -68,6 +68,8 @@ extern const char kInvalidCandidates[];
 extern const char kInvalidSdp[];
 extern const char kMlineMismatch[];
 extern const char kSdpWithoutCrypto[];
+extern const char kSdpWithoutSdesAndDtlsDisabled[];
+extern const char kSdpWithoutIceUfragPwd[];
 extern const char kSessionError[];
 extern const char kUpdateStateFailed[];
 extern const char kPushDownOfferTDFailed[];
@@ -98,7 +100,8 @@ class WebRtcSession : public cricket::BaseSession,
                       public AudioProviderInterface,
                       public DataChannelFactory,
                       public VideoProviderInterface,
-                      public DtmfProviderInterface {
+                      public DtmfProviderInterface,
+                      public DataChannelProviderInterface {
  public:
   WebRtcSession(cricket::ChannelManager* channel_manager,
                 talk_base::Thread* signaling_thread,
@@ -179,6 +182,14 @@ class WebRtcSession : public cricket::BaseSession,
   virtual bool InsertDtmf(const std::string& track_id,
                           int code, int duration);
   virtual sigslot::signal0<>* GetOnDestroyedSignal();
+
+  // Implements DataChannelProviderInterface.
+  virtual bool SendData(const cricket::SendDataParams& params,
+                        const talk_base::Buffer& payload,
+                        cricket::SendDataResult* result) OVERRIDE;
+  virtual bool ConnectDataChannel(DataChannel* webrtc_data_channel) OVERRIDE;
+  virtual void DisconnectDataChannel(DataChannel* webrtc_data_channel) OVERRIDE;
+
 
   talk_base::scoped_refptr<DataChannel> CreateDataChannel(
       const std::string& label,
@@ -299,6 +310,7 @@ class WebRtcSession : public cricket::BaseSession,
   std::vector<IceCandidateInterface*> saved_candidates_;
   // If the remote peer is using a older version of implementation.
   bool older_version_remote_peer_;
+  bool dtls_enabled_;
   // Specifies which kind of data channel is allowed. This is controlled
   // by the chrome command-line flag and constraints:
   // 1. If chrome command-line switch 'enable-sctp-data-channels' is enabled,

@@ -50,6 +50,7 @@
 #include "talk/media/base/streamparams.h"
 #include "talk/media/base/voiceprocessor.h"
 #include "talk/media/webrtc/webrtcvoe.h"
+#include "webrtc/common.h"
 #include "webrtc/modules/audio_processing/include/audio_processing.h"
 
 #ifdef WIN32
@@ -233,6 +234,9 @@ class WebRtcSoundclipMedia : public SoundclipMedia {
   }
 
   bool Init() {
+    if (!engine_->voe_sc()) {
+      return false;
+    }
     webrtc_channel_ = engine_->voe_sc()->base()->CreateChannel();
     if (webrtc_channel_ == -1) {
       LOG_RTCERR0(CreateChannel);
@@ -299,6 +303,7 @@ class WebRtcSoundclipMedia : public SoundclipMedia {
 WebRtcVoiceEngine::WebRtcVoiceEngine()
     : voe_wrapper_(new VoEWrapper()),
       voe_wrapper_sc_(new VoEWrapper()),
+      voe_wrapper_sc_initialized_(false),
       tracing_(new VoETraceWrapper()),
       adm_(NULL),
       adm_sc_(NULL),
@@ -315,6 +320,7 @@ WebRtcVoiceEngine::WebRtcVoiceEngine(VoEWrapper* voe_wrapper,
                                      VoETraceWrapper* tracing)
     : voe_wrapper_(voe_wrapper),
       voe_wrapper_sc_(voe_wrapper_sc),
+      voe_wrapper_sc_initialized_(false),
       tracing_(tracing),
       adm_(NULL),
       adm_sc_(NULL),
@@ -476,6 +482,24 @@ bool WebRtcVoiceEngine::Init(talk_base::Thread* worker_thread) {
   return res;
 }
 
+// Gets the default set of optoins applied to the engine. Historically, these
+// were supplied as a combination of flags from the channel manager (ec, agc,
+// ns, and highpass) and the rest hardcoded in InitInternal.
+static AudioOptions GetDefaultEngineOptions() {
+  AudioOptions options;
+  options.echo_cancellation.Set(true);
+  options.auto_gain_control.Set(true);
+  options.noise_suppression.Set(true);
+  options.highpass_filter.Set(true);
+  options.typing_detection.Set(true);
+  options.conference_mode.Set(false);
+  options.adjust_agc_delta.Set(0);
+  options.experimental_agc.Set(false);
+  options.experimental_aec.Set(false);
+  options.aec_dump.Set(false);
+  return options;
+}
+
 bool WebRtcVoiceEngine::InitInternal() {
   // Temporarily turn logging level up for the Init call
   int old_filter = log_filter_;
@@ -506,7 +530,10 @@ bool WebRtcVoiceEngine::InitInternal() {
     return false;
   }
 
-  if (!SetOptions(MediaEngineInterface::DEFAULT_AUDIO_OPTIONS)) {
+  // Set defaults for options, so that ApplyOptions applies them explicitly
+  // when we clear option (channel) overrides. External clients can still
+  // modify the defaults via SetOptions (on the media engine).
+  if (!SetOptions(GetDefaultEngineOptions())) {
     return false;
   }
 
@@ -517,6 +544,23 @@ bool WebRtcVoiceEngine::InitInternal() {
     LOG(LS_INFO) << ToString(*it);
   }
 
+  // Disable the DTMF playout when a tone is sent.
+  // PlayDtmfTone will be used if local playout is needed.
+  if (voe_wrapper_->dtmf()->SetDtmfFeedbackStatus(false) == -1) {
+    LOG_RTCERR1(SetDtmfFeedbackStatus, false);
+  }
+
+  initialized_ = true;
+  return true;
+}
+
+bool WebRtcVoiceEngine::EnsureSoundclipEngineInit() {
+  if (voe_wrapper_sc_initialized_) {
+    return true;
+  }
+  // Note that, if initialization fails, voe_wrapper_sc_initialized_ will still
+  // be false, so subsequent calls to EnsureSoundclipEngineInit will
+  // probably just fail again. That's acceptable behavior.
 #if defined(LINUX) && !defined(HAVE_LIBPULSE)
   voe_wrapper_sc_->hw()->SetAudioDeviceLayer(webrtc::kAudioLinuxAlsa);
 #endif
@@ -550,14 +594,8 @@ bool WebRtcVoiceEngine::InitInternal() {
     }
   }
 #endif
-
-  // Disable the DTMF playout when a tone is sent.
-  // PlayDtmfTone will be used if local playout is needed.
-  if (voe_wrapper_->dtmf()->SetDtmfFeedbackStatus(false) == -1) {
-    LOG_RTCERR1(SetDtmfFeedbackStatus, false);
-  }
-
-  initialized_ = true;
+  voe_wrapper_sc_initialized_ = true;
+  LOG(LS_INFO) << "Initialized WebRtc soundclip engine.";
   return true;
 }
 
@@ -567,7 +605,10 @@ void WebRtcVoiceEngine::Terminate() {
 
   StopAecDump();
 
-  voe_wrapper_sc_->base()->Terminate();
+  if (voe_wrapper_sc_) {
+    voe_wrapper_sc_initialized_ = false;
+    voe_wrapper_sc_->base()->Terminate();
+  }
   voe_wrapper_->base()->Terminate();
   desired_local_monitor_enable_ = false;
 }
@@ -586,6 +627,11 @@ VoiceMediaChannel *WebRtcVoiceEngine::CreateChannel() {
 }
 
 SoundclipMedia *WebRtcVoiceEngine::CreateSoundclip() {
+  if (!EnsureSoundclipEngineInit()) {
+    LOG(LS_ERROR) << "Unable to create soundclip: soundclip engine failed to "
+                  << "initialize.";
+    return NULL;
+  }
   WebRtcSoundclipMedia *soundclip = new WebRtcSoundclipMedia(this);
   if (!soundclip->Init() || !soundclip->Enable()) {
     delete soundclip;
@@ -594,35 +640,7 @@ SoundclipMedia *WebRtcVoiceEngine::CreateSoundclip() {
   return soundclip;
 }
 
-// TODO(zhurunz): Add a comprehensive unittests for SetOptions().
-bool WebRtcVoiceEngine::SetOptions(int flags) {
-  AudioOptions options;
-
-  // Convert flags to AudioOptions.
-  options.echo_cancellation.Set(
-      ((flags & MediaEngineInterface::ECHO_CANCELLATION) != 0));
-  options.auto_gain_control.Set(
-      ((flags & MediaEngineInterface::AUTO_GAIN_CONTROL) != 0));
-  options.noise_suppression.Set(
-      ((flags & MediaEngineInterface::NOISE_SUPPRESSION) != 0));
-  options.highpass_filter.Set(
-      ((flags & MediaEngineInterface::HIGHPASS_FILTER) != 0));
-  options.stereo_swapping.Set(
-      ((flags & MediaEngineInterface::STEREO_FLIPPING) != 0));
-
-  // Set defaults for flagless options here. Make sure they are all set so that
-  // ApplyOptions applies all of them when we clear overrides.
-  options.typing_detection.Set(true);
-  options.conference_mode.Set(false);
-  options.adjust_agc_delta.Set(0);
-  options.experimental_agc.Set(false);
-  options.experimental_aec.Set(false);
-  options.aec_dump.Set(false);
-
-  return SetAudioOptions(options);
-}
-
-bool WebRtcVoiceEngine::SetAudioOptions(const AudioOptions& options) {
+bool WebRtcVoiceEngine::SetOptions(const AudioOptions& options) {
   if (!ApplyOptions(options)) {
     return false;
   }
@@ -683,7 +701,6 @@ bool WebRtcVoiceEngine::ApplyOptions(const AudioOptions& options_in) {
   options.experimental_agc.Set(false);
   options.experimental_aec.Set(false);
 #endif
-
 
   LOG(LS_INFO) << "Applying audio options: " << options.ToString();
 
@@ -764,6 +781,20 @@ bool WebRtcVoiceEngine::ApplyOptions(const AudioOptions& options_in) {
       StartAecDump(kAecDumpByAudioOptionFilename);
     else
       StopAecDump();
+  }
+
+  bool experimental_aec;
+  if (options.experimental_aec.Get(&experimental_aec)) {
+    webrtc::AudioProcessing* audioproc =
+        voe_wrapper_->base()->audio_processing();
+    // We check audioproc for the benefit of tests, since FakeWebRtcVoiceEngine
+    // returns NULL on audio_processing().
+    if (audioproc) {
+      webrtc::Config config;
+      config.Set<webrtc::DelayCorrection>(
+          new webrtc::DelayCorrection(experimental_aec));
+      audioproc->SetExtraOptions(config);
+    }
   }
 
 
@@ -2151,6 +2182,11 @@ bool WebRtcVoiceMediaChannel::AddRecvStream(const StreamParams& sp) {
     return false;
   uint32 ssrc = sp.first_ssrc();
 
+  if (ssrc == 0) {
+    LOG(LS_WARNING) << "AddRecvStream with 0 ssrc is not supported.";
+    return false;
+  }
+
   if (receive_channels_.find(ssrc) != receive_channels_.end()) {
     LOG(LS_ERROR) << "Stream already exists with ssrc " << ssrc;
     return false;
@@ -2174,6 +2210,21 @@ bool WebRtcVoiceMediaChannel::AddRecvStream(const StreamParams& sp) {
     return false;
   }
 
+  if (!ConfigureRecvChannel(channel)) {
+    DeleteChannel(channel);
+    return false;
+  }
+
+  receive_channels_.insert(
+      std::make_pair(ssrc, WebRtcVoiceChannelInfo(channel, NULL)));
+
+  LOG(LS_INFO) << "New audio stream " << ssrc
+               << " registered to VoiceEngine channel #"
+               << channel << ".";
+  return true;
+}
+
+bool WebRtcVoiceMediaChannel::ConfigureRecvChannel(int channel) {
   // Configure to use external transport, like our default channel.
   if (engine()->voe()->network()->RegisterExternalTransport(
           channel, *this) == -1) {
@@ -2230,13 +2281,6 @@ bool WebRtcVoiceMediaChannel::AddRecvStream(const StreamParams& sp) {
   }
   SetNack(channel, nack_enabled_);
 
-  receive_channels_.insert(
-      std::make_pair(ssrc, WebRtcVoiceChannelInfo(channel, NULL)));
-
-  // TODO(juberti): We should rollback the add if SetPlayout fails.
-  LOG(LS_INFO) << "New audio stream " << ssrc
-            << " registered to VoiceEngine channel #"
-            << channel << ".";
   return SetPlayout(channel, playout_);
 }
 
@@ -2751,7 +2795,6 @@ bool WebRtcVoiceMediaChannel::GetStats(VoiceMediaInfo* info) {
     }
   }
 
-
   webrtc::CallStatistics cs;
   unsigned int ssrc;
   webrtc::CodecInst codec;
@@ -2819,6 +2862,8 @@ bool WebRtcVoiceMediaChannel::GetStats(VoiceMediaInfo* info) {
     sinfo.echo_return_loss_enhancement = echo_return_loss_enhancement;
     sinfo.echo_delay_median_ms = echo_delay_median_ms;
     sinfo.echo_delay_std_ms = echo_delay_std_ms;
+    // TODO(ajm): Re-enable this metric once we have a reliable implementation.
+    sinfo.aec_quality_min = -1;
     sinfo.typing_noise_detected = typing_noise_detected_;
 
     info->senders.push_back(sinfo);
@@ -2928,13 +2973,11 @@ bool WebRtcVoiceMediaChannel::FindSsrc(int channel_num, uint32* ssrc) {
 }
 
 void WebRtcVoiceMediaChannel::OnError(uint32 ssrc, int error) {
-#ifdef USE_WEBRTC_DEV_BRANCH
   if (error == VE_TYPING_NOISE_WARNING) {
     typing_noise_detected_ = true;
   } else if (error == VE_TYPING_NOISE_OFF_WARNING) {
     typing_noise_detected_ = false;
   }
-#endif
   SignalMediaError(ssrc, WebRtcErrorToChannelError(error));
 }
 

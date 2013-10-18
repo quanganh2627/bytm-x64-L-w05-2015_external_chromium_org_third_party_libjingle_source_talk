@@ -318,20 +318,32 @@ class WebRtcDecoderObserver : public webrtc::ViEDecoderObserver {
   virtual void IncomingRate(const int videoChannel,
                             const unsigned int framerate,
                             const unsigned int bitrate) {
+    talk_base::CritScope cs(&crit_);
     ASSERT(video_channel_ == videoChannel);
     framerate_ = framerate;
     bitrate_ = bitrate;
   }
   virtual void RequestNewKeyFrame(const int videoChannel) {
+    talk_base::CritScope cs(&crit_);
     ASSERT(video_channel_ == videoChannel);
     ++firs_requested_;
   }
 
-  int framerate() const { return framerate_; }
-  int bitrate() const { return bitrate_; }
-  int firs_requested() const { return firs_requested_; }
+  int framerate() const {
+    talk_base::CritScope cs(&crit_);
+    return framerate_;
+  }
+  int bitrate() const {
+    talk_base::CritScope cs(&crit_);
+    return bitrate_;
+  }
+  int firs_requested() const {
+    talk_base::CritScope cs(&crit_);
+    return firs_requested_;
+  }
 
  private:
+  mutable talk_base::CriticalSection crit_;
   int video_channel_;
   int framerate_;
   int bitrate_;
@@ -350,15 +362,23 @@ class WebRtcEncoderObserver : public webrtc::ViEEncoderObserver {
   virtual void OutgoingRate(const int videoChannel,
                             const unsigned int framerate,
                             const unsigned int bitrate) {
+    talk_base::CritScope cs(&crit_);
     ASSERT(video_channel_ == videoChannel);
     framerate_ = framerate;
     bitrate_ = bitrate;
   }
 
-  int framerate() const { return framerate_; }
-  int bitrate() const { return bitrate_; }
+  int framerate() const {
+    talk_base::CritScope cs(&crit_);
+    return framerate_;
+  }
+  int bitrate() const {
+    talk_base::CritScope cs(&crit_);
+    return bitrate_;
+  }
 
  private:
+  mutable talk_base::CriticalSection crit_;
   int video_channel_;
   int framerate_;
   int bitrate_;
@@ -514,7 +534,8 @@ class WebRtcVideoChannelSendInfo : public sigslot::has_slots<> {
         external_capture_(external_capture),
         capturer_updated_(false),
         interval_(0),
-        video_adapter_(new CoordinatedVideoAdapter) {
+        video_adapter_(new CoordinatedVideoAdapter),
+        cpu_monitor_(cpu_monitor) {
     overuse_observer_.reset(new WebRtcOveruseObserver(video_adapter_.get()));
     SignalCpuAdaptationUnable.repeat(video_adapter_->SignalCpuAdaptationUnable);
     if (cpu_monitor) {
@@ -633,6 +654,9 @@ class WebRtcVideoChannelSendInfo : public sigslot::has_slots<> {
   }
 
   void SetCpuOveruseDetection(bool enable) {
+    if (cpu_monitor_ && enable) {
+      cpu_monitor_->SignalUpdate.disconnect(video_adapter_.get());
+    }
     overuse_observer_->Enable(enable);
     video_adapter_->set_cpu_adaptation(enable);
   }
@@ -689,6 +713,7 @@ class WebRtcVideoChannelSendInfo : public sigslot::has_slots<> {
   int64 interval_;
 
   talk_base::scoped_ptr<CoordinatedVideoAdapter> video_adapter_;
+  talk_base::CpuMonitor* cpu_monitor_;
   talk_base::scoped_ptr<WebRtcOveruseObserver> overuse_observer_;
 };
 
@@ -900,13 +925,24 @@ int WebRtcVideoEngine::GetCapabilities() {
   return VIDEO_RECV | VIDEO_SEND;
 }
 
-bool WebRtcVideoEngine::SetOptions(int options) {
+bool WebRtcVideoEngine::SetOptions(const VideoOptions &options) {
   return true;
 }
 
 bool WebRtcVideoEngine::SetDefaultEncoderConfig(
     const VideoEncoderConfig& config) {
   return SetDefaultCodec(config.max_codec);
+}
+
+VideoEncoderConfig WebRtcVideoEngine::GetDefaultEncoderConfig() const {
+  ASSERT(!video_codecs_.empty());
+  VideoCodec max_codec(kVideoCodecPrefs[0].payload_type,
+                       kVideoCodecPrefs[0].name,
+                       video_codecs_[0].width,
+                       video_codecs_[0].height,
+                       video_codecs_[0].framerate,
+                       0);
+  return VideoEncoderConfig(max_codec);
 }
 
 // SetDefaultCodec may be called while the capturer is running. For example, a
@@ -919,6 +955,7 @@ bool WebRtcVideoEngine::SetDefaultCodec(const VideoCodec& codec) {
     return false;
   }
 
+  ASSERT(!video_codecs_.empty());
   default_codec_format_ = VideoFormat(
       video_codecs_[0].width,
       video_codecs_[0].height,
@@ -1223,7 +1260,8 @@ static void AddDefaultFeedbackParams(VideoCodec* codec) {
 }
 
 // Rebuilds the codec list to be only those that are less intensive
-// than the specified codec. Prefers internal codec over external.
+// than the specified codec. Prefers internal codec over external with
+// higher preference field.
 bool WebRtcVideoEngine::RebuildCodecList(const VideoCodec& in_codec) {
   if (!FindCodec(in_codec))
     return false;
@@ -1262,7 +1300,9 @@ bool WebRtcVideoEngine::RebuildCodecList(const VideoCodec& in_codec) {
             codecs[i].max_width,
             codecs[i].max_height,
             codecs[i].max_fps,
-            static_cast<int>(codecs.size() + ARRAY_SIZE(kVideoCodecPrefs) - i));
+            // Use negative preference on external codec to ensure the internal
+            // codec is preferred.
+            static_cast<int>(0 - i));
         AddDefaultFeedbackParams(&codec);
         video_codecs_.push_back(codec);
       }
