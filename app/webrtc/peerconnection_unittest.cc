@@ -157,8 +157,8 @@ class PeerConnectionTestClientBase
       // Disable highpass filter so that we can get all the test audio frames.
       constraints.AddMandatory(
           MediaConstraintsInterface::kHighpassFilter, false);
-      talk_base::scoped_refptr<webrtc::LocalAudioSource> source =
-          webrtc::LocalAudioSource::Create(&constraints);
+      talk_base::scoped_refptr<webrtc::AudioSourceInterface> source =
+          peer_connection_factory_->CreateAudioSource(&constraints);
       // TODO(perkj): Test audio source when it is implemented. Currently audio
       // always use the default input.
       talk_base::scoped_refptr<webrtc::AudioTrackInterface> audio_track(
@@ -1065,7 +1065,7 @@ TEST_F(JsepPeerConnectionP2PTestClient, LocalP2PTestDtls) {
 
 // This test sets up a audio call initially and then upgrades to audio/video,
 // using DTLS.
-TEST_F(JsepPeerConnectionP2PTestClient, DISABLED_LocalP2PTestDtlsRenegotiate) {
+TEST_F(JsepPeerConnectionP2PTestClient, LocalP2PTestDtlsRenegotiate) {
   MAYBE_SKIP_TEST(talk_base::SSLStreamAdapter::HaveDtlsSrtp);
   FakeConstraints setup_constraints;
   setup_constraints.AddMandatory(MediaConstraintsInterface::kEnableDtlsSrtp,
