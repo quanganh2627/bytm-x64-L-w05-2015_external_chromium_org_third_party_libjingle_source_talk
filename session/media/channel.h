@@ -97,10 +97,6 @@ class BaseChannel
     return rtcp_transport_channel_;
   }
   bool enabled() const { return enabled_; }
-  // Set to true to have the channel optimistically allow data to be sent even
-  // when the channel isn't fully writable.
-  void set_optimistic_data_send(bool value) { optimistic_data_send_ = value; }
-  bool optimistic_data_send() const { return optimistic_data_send_; }
 
   // This function returns true if we are using SRTP.
   bool secure() const { return srtp_filter_.IsActive(); }
@@ -362,7 +358,6 @@ class BaseChannel
   bool writable_;
   bool rtp_ready_to_send_;
   bool rtcp_ready_to_send_;
-  bool optimistic_data_send_;
   bool was_ever_writable_;
   MediaContentDirection local_content_direction_;
   MediaContentDirection remote_content_direction_;
@@ -615,6 +610,11 @@ class DataChannel : public BaseChannel {
   void StartMediaMonitor(int cms);
   void StopMediaMonitor();
 
+  // Should be called on the signaling thread only.
+  bool ready_to_send_data() const {
+    return ready_to_send_data_;
+  }
+
   sigslot::signal2<DataChannel*, const DataMediaInfo&> SignalMediaMonitor;
   sigslot::signal2<DataChannel*, const std::vector<ConnectionInfo>&>
       SignalConnectionMonitor;
@@ -719,6 +719,7 @@ class DataChannel : public BaseChannel {
   // TODO(pthatcher): Make a separate SctpDataChannel and
   // RtpDataChannel instead of using this.
   DataChannelType data_channel_type_;
+  bool ready_to_send_data_;
 };
 
 }  // namespace cricket
