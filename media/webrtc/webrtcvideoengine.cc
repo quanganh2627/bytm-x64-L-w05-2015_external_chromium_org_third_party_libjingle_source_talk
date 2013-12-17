@@ -2147,6 +2147,18 @@ bool WebRtcVideoMediaChannel::CreateSendChannelKey(uint32 local_ssrc,
   return true;
 }
 
+int WebRtcVideoMediaChannel::GetSendChannelNum(VideoCapturer* capturer) {
+  int num = 0;
+  for (SendChannelMap::iterator iter = send_channels_.begin();
+       iter != send_channels_.end(); ++iter) {
+    WebRtcVideoChannelSendInfo* send_channel = iter->second;
+    if (send_channel->video_capturer() == capturer) {
+      ++num;
+    }
+  }
+  return num;
+}
+
 uint32 WebRtcVideoMediaChannel::GetDefaultChannelSsrc() {
   WebRtcVideoChannelSendInfo* send_channel = send_channels_[0];
   const StreamParams* sp = send_channel->stream_params();
@@ -2162,11 +2174,8 @@ bool WebRtcVideoMediaChannel::DeleteSendChannel(uint32 ssrc_key) {
     return false;
   }
   WebRtcVideoChannelSendInfo* send_channel = send_channels_[ssrc_key];
-  VideoCapturer* capturer = send_channel->video_capturer();
-  if (capturer != NULL) {
-    capturer->SignalVideoFrame.disconnect(this);
-    send_channel->set_video_capturer(NULL);
-  }
+  MaybeDisconnectCapturer(send_channel->video_capturer());
+  send_channel->set_video_capturer(NULL);
 
   int channel_id = send_channel->channel_id();
   int capture_id = send_channel->capture_id();
@@ -2205,7 +2214,7 @@ bool WebRtcVideoMediaChannel::RemoveCapturer(uint32 ssrc) {
   if (capturer == NULL) {
     return false;
   }
-  capturer->SignalVideoFrame.disconnect(this);
+  MaybeDisconnectCapturer(capturer);
   send_channel->set_video_capturer(NULL);
   const int64 timestamp = send_channel->local_stream_info()->time_stamp();
   if (send_codec_) {
@@ -2456,14 +2465,10 @@ bool WebRtcVideoMediaChannel::SetCapturer(uint32 ssrc,
     return false;
   }
   VideoCapturer* old_capturer = send_channel->video_capturer();
-  if (old_capturer) {
-    old_capturer->SignalVideoFrame.disconnect(this);
-  }
+  MaybeDisconnectCapturer(old_capturer);
 
   send_channel->set_video_capturer(capturer);
-  capturer->SignalVideoFrame.connect(
-      this,
-      &WebRtcVideoMediaChannel::SendFrame);
+  MaybeConnectCapturer(capturer);
   if (!capturer->IsScreencast() && ratio_w_ != 0 && ratio_h_ != 0) {
     capturer->UpdateAspectRatio(ratio_w_, ratio_h_);
   }
@@ -2480,7 +2485,8 @@ bool WebRtcVideoMediaChannel::RequestIntraFrame() {
   return false;
 }
 
-void WebRtcVideoMediaChannel::OnPacketReceived(talk_base::Buffer* packet) {
+void WebRtcVideoMediaChannel::OnPacketReceived(
+    talk_base::Buffer* packet, const talk_base::PacketTime& packet_time) {
   // Pick which channel to send this packet to. If this packet doesn't match
   // any multiplexed streams, just send it to the default channel. Otherwise,
   // send it to the specific decoder instance for that stream.
@@ -2495,10 +2501,16 @@ void WebRtcVideoMediaChannel::OnPacketReceived(talk_base::Buffer* packet) {
   engine()->vie()->network()->ReceivedRTPPacket(
       which_channel,
       packet->data(),
+#ifdef USE_WEBRTC_DEV_BRANCH
+      static_cast<int>(packet->length()),
+      webrtc::PacketTime(packet_time.timestamp, packet_time.not_before));
+#else
       static_cast<int>(packet->length()));
+#endif
 }
 
-void WebRtcVideoMediaChannel::OnRtcpReceived(talk_base::Buffer* packet) {
+void WebRtcVideoMediaChannel::OnRtcpReceived(
+    talk_base::Buffer* packet, const talk_base::PacketTime& packet_time) {
 // Sending channels need all RTCP packets with feedback information.
 // Even sender reports can contain attached report blocks.
 // Receiving channels need sender reports in order to create
@@ -3736,6 +3748,19 @@ bool WebRtcVideoMediaChannel::SetLocalRtxSsrc(int channel_id,
     return false;
   }
   return true;
+}
+
+void WebRtcVideoMediaChannel::MaybeConnectCapturer(VideoCapturer* capturer) {
+  if (capturer != NULL && GetSendChannelNum(capturer) == 1) {
+    capturer->SignalVideoFrame.connect(this,
+                                       &WebRtcVideoMediaChannel::SendFrame);
+  }
+}
+
+void WebRtcVideoMediaChannel::MaybeDisconnectCapturer(VideoCapturer* capturer) {
+  if (capturer != NULL && GetSendChannelNum(capturer) == 1) {
+    capturer->SignalVideoFrame.disconnect(this);
+  }
 }
 
 }  // namespace cricket
