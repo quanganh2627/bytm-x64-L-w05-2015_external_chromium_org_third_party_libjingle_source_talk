@@ -1218,7 +1218,14 @@ TEST_F(WebRtcVideoEngineTestFake, SetOptionsWithDenoising) {
 
 TEST_F(WebRtcVideoEngineTestFake, MultipleSendStreamsWithOneCapturer) {
   EXPECT_TRUE(SetupEngine());
+
+  // Start the capturer
   cricket::FakeVideoCapturer capturer;
+  cricket::VideoFormat capture_format_vga = cricket::VideoFormat(640, 480,
+        cricket::VideoFormat::FpsToInterval(30), cricket::FOURCC_I420);
+  EXPECT_EQ(cricket::CS_RUNNING, capturer.Start(capture_format_vga));
+
+  // Add send streams and connect the capturer
   for (unsigned int i = 0; i < sizeof(kSsrcs2)/sizeof(kSsrcs2[0]); ++i) {
     EXPECT_TRUE(channel_->AddSendStream(
         cricket::StreamParams::CreateLegacy(kSsrcs2[i])));
@@ -1232,23 +1239,28 @@ TEST_F(WebRtcVideoEngineTestFake, MultipleSendStreamsWithOneCapturer) {
   ASSERT_NE(-1, channel1);
   ASSERT_NE(channel0, channel1);
 
+  // Set send codec.
   std::vector<cricket::VideoCodec> codecs;
-  codecs.push_back(kVP8Codec);
+  cricket::VideoCodec send_codec(100, "VP8", 640, 480, 30, 0);
+  codecs.push_back(send_codec);
   EXPECT_TRUE(channel_->SetSendCodecs(codecs));
 
-  cricket::WebRtcVideoFrame frame;
-  const size_t pixel_width = 1;
-  const size_t pixel_height = 1;
-  const int64 elapsed_time = 0;
-  const int64 time_stamp = 0;
-  EXPECT_TRUE(frame.InitToBlack(kVP8Codec.width, kVP8Codec.height,
-                                pixel_width, pixel_height,
-                                elapsed_time, time_stamp));
-  channel_->SendFrame(&capturer, &frame);
-
-  // Both channels should have received the frame.
+  EXPECT_TRUE(capturer.CaptureFrame());
   EXPECT_EQ(1, vie_.GetIncomingFrameNum(channel0));
   EXPECT_EQ(1, vie_.GetIncomingFrameNum(channel1));
+
+  EXPECT_TRUE(channel_->RemoveSendStream(kSsrcs2[0]));
+  EXPECT_TRUE(capturer.CaptureFrame());
+  // channel0 is the default channel, so it won't be deleted.
+  // But it should be disconnected from the capturer.
+  EXPECT_EQ(1, vie_.GetIncomingFrameNum(channel0));
+  EXPECT_EQ(2, vie_.GetIncomingFrameNum(channel1));
+
+  EXPECT_TRUE(channel_->RemoveSendStream(kSsrcs2[1]));
+  EXPECT_TRUE(capturer.CaptureFrame());
+  EXPECT_EQ(1, vie_.GetIncomingFrameNum(channel0));
+  // channel1 has already been deleted.
+  EXPECT_EQ(-1, vie_.GetIncomingFrameNum(channel1));
 }
 
 
