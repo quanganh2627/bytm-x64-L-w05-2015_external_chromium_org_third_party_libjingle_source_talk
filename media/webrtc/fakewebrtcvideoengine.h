@@ -827,7 +827,12 @@ class FakeWebRtcVideoEngine
   }
   WEBRTC_STUB(RegisterSendTransport, (const int, webrtc::Transport&));
   WEBRTC_STUB(DeregisterSendTransport, (const int));
+#ifdef USE_WEBRTC_DEV_BRANCH
+  WEBRTC_STUB(ReceivedRTPPacket, (const int, const void*, const int,
+      const webrtc::PacketTime&));
+#else
   WEBRTC_STUB(ReceivedRTPPacket, (const int, const void*, const int));
+#endif
   WEBRTC_STUB(ReceivedRTCPPacket, (const int, const void*, const int));
   // Not using WEBRTC_STUB due to bool return value
   virtual bool IsIPv6Enabled(int channel) { return true; }
