@@ -2718,6 +2718,10 @@ TEST_F(WebRtcVoiceEngineTestFake, TestSetDscpOptions) {
   options.dscp.Set(true);
   EXPECT_TRUE(channel->SetOptions(options));
   EXPECT_EQ(talk_base::DSCP_EF, network_interface->dscp());
+  // Verify previous value is not modified if dscp option is not set.
+  cricket::AudioOptions options1;
+  EXPECT_TRUE(channel->SetOptions(options1));
+  EXPECT_EQ(talk_base::DSCP_EF, network_interface->dscp());
   options.dscp.Set(false);
   EXPECT_TRUE(channel->SetOptions(options));
   EXPECT_EQ(talk_base::DSCP_DEFAULT, network_interface->dscp());
@@ -2892,7 +2896,8 @@ TEST(WebRtcVoiceEngineTest, HasCorrectCodecs) {
   EXPECT_FALSE(engine.FindCodec(cricket::AudioCodec(0, "", 5000, 0, 1, 0)));
   EXPECT_FALSE(engine.FindCodec(cricket::AudioCodec(0, "", 0, 5000, 1, 0)));
   // Check that there aren't any extra codecs lying around.
-  EXPECT_EQ(13U, engine.codecs().size());
+  size_t codecs_num = 12;
+  EXPECT_EQ(codecs_num, engine.codecs().size());
   // Verify the payload id of common audio codecs, including CN, ISAC, and G722.
   for (std::vector<cricket::AudioCodec>::const_iterator it =
       engine.codecs().begin(); it != engine.codecs().end(); ++it) {

@@ -80,6 +80,7 @@
               'variables': {
                 'java_src_dir': 'app/webrtc/java/src',
                 'webrtc_modules_dir': '<(webrtc_root)/modules',
+                'build_jar_log': '<(INTERMEDIATE_DIR)/build_jar.log',
                 'peerconnection_java_files': [
                   'app/webrtc/java/src/org/webrtc/AudioSource.java',
                   'app/webrtc/java/src/org/webrtc/AudioTrack.java',
@@ -137,10 +138,13 @@
                 }],
               ],
               'action': [
-                'build/build_jar.sh', '<(java_home)', '<@(_outputs)',
-                '<(INTERMEDIATE_DIR)',
-                '<(build_classpath)',
-                '<@(java_files)'
+                'bash', '-ec',
+                'mkdir -p <(INTERMEDIATE_DIR) && '
+                '{ build/build_jar.sh <(java_home) <@(_outputs) '
+                '      <(INTERMEDIATE_DIR)/build_jar.tmp '
+                '      <(build_classpath) <@(java_files) '
+                '      > <(build_jar_log) 2>&1 || '
+                '  { cat <(build_jar_log) ; exit 1; } }'
               ],
             },
           ],
@@ -843,8 +847,6 @@
         # TODO(ronghuawu): Enable when SCTP is ready.
         # 'media/sctp/sctpdataengine.cc',
         # 'media/sctp/sctpdataengine.h',
-        'media/sctp/sctputils.cc',
-        'media/sctp/sctputils.h',
         'media/webrtc/webrtccommon.h',
         'media/webrtc/webrtcexport.h',
         'media/webrtc/webrtcmediaengine.h',
@@ -1165,6 +1167,8 @@
         'app/webrtc/proxy.h',
         'app/webrtc/remotevideocapturer.cc',
         'app/webrtc/remotevideocapturer.h',
+        'app/webrtc/sctputils.cc',
+        'app/webrtc/sctputils.h',
         'app/webrtc/statscollector.cc',
         'app/webrtc/statscollector.h',
         'app/webrtc/statstypes.h',
