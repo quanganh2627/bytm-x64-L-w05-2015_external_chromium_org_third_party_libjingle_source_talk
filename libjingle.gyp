@@ -53,6 +53,9 @@
           'sources': [
             'app/webrtc/java/jni/peerconnection_jni.cc'
           ],
+          'include_dirs': [
+            '<(DEPTH)/third_party/libyuv/include',
+          ],
           'conditions': [
             ['OS=="linux"', {
               'defines': [
@@ -105,6 +108,7 @@
                 # included here, or better yet, build a proper .jar in webrtc
                 # and include it here.
                 'android_java_files': [
+                  'app/webrtc/java/src/org/webrtc/MediaCodecVideoEncoder.java',
                   '<(webrtc_modules_dir)/audio_device/android/java/src/org/webrtc/voiceengine/AudioManagerAndroid.java',
                   '<(webrtc_modules_dir)/video_capture/android/java/src/org/webrtc/videoengine/VideoCaptureAndroid.java',
                   '<(webrtc_modules_dir)/video_capture/android/java/src/org/webrtc/videoengine/VideoCaptureDeviceInfoAndroid.java',
@@ -711,6 +715,7 @@
           'conditions': [
             ['OS!="ios"', {
               'sources': [
+                'base/openssl.h',
                 'base/openssladapter.cc',
                 'base/openssladapter.h',
                 'base/openssldigest.cc',
@@ -1171,6 +1176,8 @@
         'app/webrtc/portallocatorfactory.cc',
         'app/webrtc/portallocatorfactory.h',
         'app/webrtc/proxy.h',
+        'app/webrtc/remoteaudiosource.cc',
+        'app/webrtc/remoteaudiosource.h',
         'app/webrtc/remotevideocapturer.cc',
         'app/webrtc/remotevideocapturer.h',
         'app/webrtc/sctputils.cc',
