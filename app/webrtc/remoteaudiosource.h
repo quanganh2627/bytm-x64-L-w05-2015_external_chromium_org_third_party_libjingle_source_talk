@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2006, Google Inc.
+ * Copyright 2014, Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,28 +25,42 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "testing/base/gunit.h"
-#include "talk/libjingle-plus/libjingleplus.h"
-#include "talk/libjingle-plus/testutil/libjingleplus_test_notifier.h"
+#ifndef TALK_APP_WEBRTC_REMOTEAUDIOSOURCE_H_
+#define TALK_APP_WEBRTC_REMOTEAUDIOSOURCE_H_
 
-#if defined(_MSC_VER) && (_MSC_VER < 1400)
-void __cdecl std::_Throw(const std::exception &) {}
-std::_Prhand std::_Raise_handler =0;
-#endif
+#include <list>
 
-namespace talk_base {
+#include "talk/app/webrtc/mediastreaminterface.h"
+#include "talk/app/webrtc/notifier.h"
 
-TEST(LibjingleTest, ConstructDestruct) {
-  for (int i = 0; i < 5; ++i) {
-    LibjinglePlus *libjingleplus = new LibjinglePlus(new Notifier);
-    libjingleplus->Login("eaterleaver0", "Buzzt3st", "talk.google.com", false, false);
+namespace webrtc {
 
-    delete libjingleplus;
-  }
-}
-}
+using webrtc::AudioSourceInterface;
 
-int main(int argc, char** argv) {
-  testing::ParseGUnitFlags(&argc, argv);
-  return RUN_ALL_TESTS();
-}
+// This class implements the audio source used by the remote audio track.
+class RemoteAudioSource : public Notifier<AudioSourceInterface> {
+ public:
+  // Creates an instance of RemoteAudioSource.
+  static talk_base::scoped_refptr<RemoteAudioSource> Create();
+
+ protected:
+  RemoteAudioSource();
+  virtual ~RemoteAudioSource();
+
+ private:
+  typedef std::list<AudioObserver*> AudioObserverList;
+
+  // MediaSourceInterface implementation.
+  virtual MediaSourceInterface::SourceState state() const OVERRIDE;
+
+  // AudioSourceInterface implementation.
+  virtual void SetVolume(double volume) OVERRIDE;
+  virtual void RegisterAudioObserver(AudioObserver* observer) OVERRIDE;
+  virtual void UnregisterAudioObserver(AudioObserver* observer) OVERRIDE;
+
+  AudioObserverList audio_observers_;
+};
+
+}  // namespace webrtc
+
+#endif  // TALK_APP_WEBRTC_REMOTEAUDIOSOURCE_H_

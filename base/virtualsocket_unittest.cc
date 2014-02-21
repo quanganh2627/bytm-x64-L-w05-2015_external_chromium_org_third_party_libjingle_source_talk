@@ -69,7 +69,7 @@ struct Sender : public MessageHandler {
 
     count += size;
     memcpy(dummy, &cur_time, sizeof(cur_time));
-    socket->Send(dummy, size, DSCP_NO_CHANGE);
+    socket->Send(dummy, size, options);
 
     last_send = cur_time;
     thread->PostDelayed(NextDelay(), this, 1);
@@ -77,6 +77,7 @@ struct Sender : public MessageHandler {
 
   Thread* thread;
   scoped_ptr<AsyncUDPSocket> socket;
+  talk_base::PacketOptions options;
   bool done;
   uint32 rate;  // bytes per second
   uint32 count;
@@ -97,7 +98,8 @@ struct Receiver : public MessageHandler, public sigslot::has_slots<> {
   }
 
   void OnReadPacket(AsyncPacketSocket* s, const char* data, size_t size,
-                    const SocketAddress& remote_addr) {
+                    const SocketAddress& remote_addr,
+                    const PacketTime& packet_time) {
     ASSERT_EQ(socket.get(), s);
     ASSERT_GE(size, 4U);
 

@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2004--2005, Google Inc.
+ * Copyright 2013 Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,48 +25,31 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _PHONE_CLIENT_ROSTERTASK_H_
-#define _PHONE_CLIENT_ROSTERTASK_H_
+#ifndef TALK_APP_WEBRTC_SCTPUTILS_H_
+#define TALK_APP_WEBRTC_SCTPUTILS_H_
 
-#include "talk/xmpp/xmppclient.h"
-#include "talk/xmpp/xmpptask.h"
-#include "talk/app/rosteritem.h"
-#include "talk/base/sigslot.h"
+#include <string>
 
-namespace buzz {
+#include "talk/app/webrtc/datachannelinterface.h"
 
-class RosterTask : public XmppTask {
-public:
-  RosterTask(Task * parent) :
-    XmppTask(parent, XmppEngine::HL_TYPE) {}
+namespace talk_base {
+class Buffer;
+}  // namespace talk_base
 
-  // Roster items removed or updated.  This can come from a push or a get
-  sigslot::signal2<const RosterItem &, bool> SignalRosterItemUpdated;
-  sigslot::signal1<const RosterItem &> SignalRosterItemRemoved;
+namespace webrtc {
+struct DataChannelInit;
 
-  // Subscription messages
-  sigslot::signal1<const Jid &> SignalSubscribe;
-  sigslot::signal1<const Jid &> SignalUnsubscribe;
-  sigslot::signal1<const Jid &> SignalSubscribed;
-  sigslot::signal1<const Jid &> SignalUnsubscribed;
+bool ParseDataChannelOpenMessage(const talk_base::Buffer& payload,
+                                 std::string* label,
+                                 DataChannelInit* config);
 
-  // Roster get
-  void RefreshRosterNow();
-  sigslot::signal0<> SignalRosterRefreshStarted;
-  sigslot::signal0<> SignalRosterRefreshFinished;
+bool ParseDataChannelOpenAckMessage(const talk_base::Buffer& payload);
 
-  virtual int ProcessStart();
+bool WriteDataChannelOpenMessage(const std::string& label,
+                                 const DataChannelInit& config,
+                                 talk_base::Buffer* payload);
 
-protected:
-  void TranslateItems(const XmlElement *rosterQueryResult);
+void WriteDataChannelOpenAckMessage(talk_base::Buffer* payload);
+}  // namespace webrtc
 
-  virtual bool HandleStanza(const XmlElement * stanza);
-
-  // Inner class for doing the roster get
-  class RosterGetTask;
-  friend class RosterGetTask;
-};
-
-}
-
-#endif // _PHONE_CLIENT_ROSTERTASK_H_
+#endif  // TALK_APP_WEBRTC_SCTPUTILS_H_

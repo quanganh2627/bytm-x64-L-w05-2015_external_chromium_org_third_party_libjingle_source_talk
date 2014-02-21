@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2004--2013, Google Inc.
+ * Copyright 2014, Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,32 +25,48 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef TALK_EXAMPLES_CHAT_TEXTCHATSENDTASK_H_
-#define TALK_EXAMPLES_CHAT_TEXTCHATSENDTASK_H_
+#include "talk/app/webrtc/remoteaudiosource.h"
 
-#include "talk/xmpp/xmpptask.h"
+#include <algorithm>
+#include <functional>
 
-namespace buzz {
+#include "talk/base/logging.h"
 
-// A class to send chat messages to the XMPP server.
-class TextChatSendTask : public XmppTask {
- public:
-  // Arguments:
-  //   parent a reference to task interface associated withe the XMPP client.
-  explicit TextChatSendTask(XmppTaskParentInterface* parent);
+namespace webrtc {
 
-  // Shuts down the thread associated with this task.
-  virtual ~TextChatSendTask();
+talk_base::scoped_refptr<RemoteAudioSource> RemoteAudioSource::Create() {
+  return new talk_base::RefCountedObject<RemoteAudioSource>();
+}
 
-  // Forms the XMPP "chat" stanza with the specified receipient and message
-  // and queues it up.
-  XmppReturnStatus Send(const Jid& to, const std::string& message);
+RemoteAudioSource::RemoteAudioSource() {
+}
 
-  // Picks up any "chat" stanzas from our queue and sends them to the server.
-  virtual int ProcessStart();
-};
+RemoteAudioSource::~RemoteAudioSource() {
+  ASSERT(audio_observers_.empty());
+}
 
-}  // namespace buzz
+MediaSourceInterface::SourceState RemoteAudioSource::state() const {
+  return MediaSourceInterface::kLive;
+}
 
-#endif  // TALK_EXAMPLES_CHAT_TEXTCHATSENDTASK_H_
+void RemoteAudioSource::SetVolume(double volume) {
+  ASSERT(volume >= 0 && volume <= 10);
+  for (AudioObserverList::iterator it = audio_observers_.begin();
+       it != audio_observers_.end(); ++it) {
+    (*it)->OnSetVolume(volume);
+  }
+}
 
+void RemoteAudioSource::RegisterAudioObserver(AudioObserver* observer) {
+  ASSERT(observer != NULL);
+  ASSERT(std::find(audio_observers_.begin(), audio_observers_.end(),
+                   observer) == audio_observers_.end());
+  audio_observers_.push_back(observer);
+}
+
+void RemoteAudioSource::UnregisterAudioObserver(AudioObserver* observer) {
+  ASSERT(observer != NULL);
+  audio_observers_.remove(observer);
+}
+
+}  // namespace webrtc

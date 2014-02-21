@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2004--2005, Google Inc.
+ * Copyright 2011, Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,29 +25,18 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _PRESENCEPUSHTASK_H_
-#define _PRESENCEPUSHTASK_H_
-
-#include "talk/xmpp/xmppengine.h"
-#include "talk/xmpp/xmpptask.h"
-#include "talk/base/sigslot.h"
-#include "talk/app/status.h"
+#include "talk/xmpp/pubsubstateclient.h"
 
 namespace buzz {
 
-class PresencePushTask : public XmppTask {
-
-public:
-  PresencePushTask(Task * parent) : XmppTask(parent, XmppEngine::HL_TYPE) {}
-  virtual int ProcessStart();
-  sigslot::signal1<const Status &>SignalStatusUpdate;
-  sigslot::signal1<const XmlElement &> SignalStatusError;
-
-protected:
-  virtual bool HandleStanza(const XmlElement * stanza);
-};
-
-  
+std::string PublishedNickKeySerializer::GetKey(
+    const std::string& publisher_nick, const std::string& published_nick) {
+  return published_nick;
 }
 
-#endif
+std::string PublisherAndPublishedNicksKeySerializer::GetKey(
+    const std::string& publisher_nick, const std::string& published_nick) {
+  return publisher_nick + ":" + published_nick;
+}
+
+}  // namespace buzz

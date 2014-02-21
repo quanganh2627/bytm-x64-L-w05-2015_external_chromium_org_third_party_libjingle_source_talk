@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2004--2013, Google Inc.
+ * Copyright 2013 Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,57 +25,13 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "talk/examples/chat/textchatsendtask.h"
+#include "talk/media/webrtc/fakewebrtcvideoengine.h"
+#include "talk/media/webrtc/fakewebrtcvoiceengine.h"
 
-#include "talk/xmpp/constants.h"
-#include "talk/xmpp/xmppclient.h"
-
-namespace buzz {
-TextChatSendTask::TextChatSendTask(XmppTaskParentInterface* parent)
-  : XmppTask(parent) {
+static void EnsureAPIMatch() {
+  new cricket::FakeWebRtcVoiceEngine(NULL, 0);
+  new cricket::FakeWebRtcVideoDecoder();
+  new cricket::FakeWebRtcVideoEncoder();
+  new cricket::FakeWebRtcVideoEngine(NULL, 0);
+  new cricket::FakeWebRtcVideoEngine::Capturer();
 }
-
-TextChatSendTask::~TextChatSendTask() {
-  Stop();
-}
-
-XmppReturnStatus TextChatSendTask::Send(const Jid& to,
-                                        const std::string& textmessage) {
-  // Make sure we are actually connected.
-  if (GetState() != STATE_INIT && GetState() != STATE_START) {
-    return XMPP_RETURN_BADSTATE;
-  }
-
-  // Put together the chat stanza...
-  XmlElement* message_stanza = new XmlElement(QN_MESSAGE);
-
-  // ... and specify the required attributes...
-  message_stanza->AddAttr(QN_TO, to.Str());
-  message_stanza->AddAttr(QN_TYPE, "chat");
-  message_stanza->AddAttr(QN_LANG, "en");
-
-  // ... and fill out the body.
-  XmlElement* message_body = new XmlElement(QN_BODY);
-  message_body->AddText(textmessage);
-  message_stanza->AddElement(message_body);
-
-  // Now queue it up.
-  QueueStanza(message_stanza);
-
-  return XMPP_RETURN_OK;
-}
-
-int TextChatSendTask::ProcessStart() {
-  const XmlElement* stanza = NextStanza();
-  if (stanza == NULL) {
-    return STATE_BLOCKED;
-  }
-
-  if (SendStanza(stanza) != XMPP_RETURN_OK) {
-    return STATE_ERROR;
-  }
-
-  return STATE_START;
-}
-
-}  // namespace buzz

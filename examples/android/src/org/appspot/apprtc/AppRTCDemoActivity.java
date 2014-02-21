@@ -75,6 +75,7 @@ public class AppRTCDemoActivity extends Activity
   private static final String TAG = "AppRTCDemoActivity";
   private PeerConnectionFactory factory;
   private VideoSource videoSource;
+  private boolean videoSourceStopped;
   private PeerConnection pc;
   private final PCObserver pcObserver = new PCObserver();
   private final SDPObserver sdpObserver = new SDPObserver();
@@ -159,6 +160,7 @@ public class AppRTCDemoActivity extends Activity
     vsv.onPause();
     if (videoSource != null) {
       videoSource.stop();
+      videoSourceStopped = true;
     }
   }
 
@@ -166,16 +168,32 @@ public class AppRTCDemoActivity extends Activity
   public void onResume() {
     super.onResume();
     vsv.onResume();
-    if (videoSource != null) {
+    if (videoSource != null && videoSourceStopped) {
       videoSource.restart();
     }
+  }
+
+
+  // Just for fun (and to regression-test bug 2302) make sure that DataChannels
+  // can be created, queried, and disposed.
+  private static void createDataChannelToRegressionTestBug2302(
+      PeerConnection pc) {
+    DataChannel dc = pc.createDataChannel("dcLabel", new DataChannel.Init());
+    abortUnless("dcLabel".equals(dc.label()), "WTF?");
+    dc.close();
+    dc.dispose();
   }
 
   @Override
   public void onIceServers(List<PeerConnection.IceServer> iceServers) {
     factory = new PeerConnectionFactory();
-    pc = factory.createPeerConnection(
-        iceServers, appRtcClient.pcConstraints(), pcObserver);
+
+    MediaConstraints pcConstraints = appRtcClient.pcConstraints();
+    pcConstraints.optional.add(
+        new MediaConstraints.KeyValuePair("RtpDataChannels", "true"));
+    pc = factory.createPeerConnection(iceServers, pcConstraints, pcObserver);
+
+    createDataChannelToRegressionTestBug2302(pc);  // See method comment.
 
     // Uncomment to get ALL WebRTC tracing and SENSITIVE libjingle logging.
     // NOTE: this _must_ happen while |factory| is alive!
@@ -223,7 +241,11 @@ public class AppRTCDemoActivity extends Activity
             vsv, VideoStreamsView.Endpoint.LOCAL)));
         lMS.addTrack(videoTrack);
       }
-      lMS.addTrack(factory.createAudioTrack("ARDAMSa0"));
+      if (appRtcClient.audioConstraints() != null) {
+        lMS.addTrack(factory.createAudioTrack(
+            "ARDAMSa0",
+            factory.createAudioSource(appRtcClient.audioConstraints())));
+      }
       pc.addStream(lMS, new MediaConstraints());
     }
     logAndToast("Waiting for ICE candidates...");
@@ -402,6 +424,11 @@ public class AppRTCDemoActivity extends Activity
                 " anyway!");
           }
         });
+    }
+
+    @Override public void onRenegotiationNeeded() {
+      // No need to do anything; AppRTC follows a pre-agreed-upon
+      // signaling/negotiation protocol.
     }
   }
 

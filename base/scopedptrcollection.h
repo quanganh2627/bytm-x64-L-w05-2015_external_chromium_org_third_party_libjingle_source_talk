@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2013 Google Inc.
+ * Copyright 2014 Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,29 +25,53 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef TALK_MEDIA_BASE_SCTPUTILS_H_
-#define TALK_MEDIA_BASE_SCTPUTILS_H_
+// Stores a collection of pointers that are deleted when the container is
+// destructed.
 
-#include <string>
+#ifndef TALK_BASE_SCOPEDPTRCOLLECTION_H_
+#define TALK_BASE_SCOPEDPTRCOLLECTION_H_
+
+#include <algorithm>
+#include <vector>
+
+#include "talk/base/basictypes.h"
+#include "talk/base/constructormagic.h"
 
 namespace talk_base {
-class Buffer;
+
+template<class T>
+class ScopedPtrCollection {
+ public:
+  typedef std::vector<T*> VectorT;
+
+  ScopedPtrCollection() { }
+  ~ScopedPtrCollection() {
+    for (typename VectorT::iterator it = collection_.begin();
+         it != collection_.end(); ++it) {
+      delete *it;
+    }
+  }
+
+  const VectorT& collection() const { return collection_; }
+  void Reserve(size_t size) {
+    collection_.reserve(size);
+  }
+  void PushBack(T* t) {
+    collection_.push_back(t);
+  }
+
+  // Remove |t| from the collection without deleting it.
+  void Remove(T* t) {
+    collection_.erase(std::remove(collection_.begin(), collection_.end(), t),
+                      collection_.end());
+  }
+
+ private:
+  VectorT collection_;
+
+  DISALLOW_COPY_AND_ASSIGN(ScopedPtrCollection);
+};
+
 }  // namespace talk_base
 
-namespace webrtc {
-struct DataChannelInit;
-}  // namespace webrtc
-
-namespace cricket {
-
-bool ParseDataChannelOpenMessage(const talk_base::Buffer& payload,
-                                 std::string* label,
-                                 webrtc::DataChannelInit* config);
-
-bool WriteDataChannelOpenMessage(const std::string& label,
-                                 const webrtc::DataChannelInit& config,
-                                 talk_base::Buffer* payload);
-
-}  // namespace cricket
-
-#endif  // TALK_MEDIA_BASE_SCTPUTILS_H_
+#endif  // TALK_BASE_SCOPEDPTRCOLLECTION_H_
