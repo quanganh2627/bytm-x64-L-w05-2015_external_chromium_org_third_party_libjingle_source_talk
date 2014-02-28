@@ -116,6 +116,12 @@ extern const char kGoogleSctpDataCodecName[];
 
 extern const char kComfortNoiseCodecName[];
 
+// Extension header for absolute send time, see url for details:
+// http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time
+extern const char kRtpAbsoluteSendTimeHeaderExtension[];
+
+extern const int kNumDefaultUnsignalledVideoRecvStreams;
 }  // namespace cricket
 
 #endif  // TALK_MEDIA_BASE_CONSTANTS_H_
+

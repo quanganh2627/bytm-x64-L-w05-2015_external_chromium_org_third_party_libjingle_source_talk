@@ -1936,10 +1936,6 @@ TEST_F(WebRtcVideoMediaChannelTest, SendVp8HdAndReceiveAdaptedVp8Vga) {
   EXPECT_TRUE(SetOneCodec(codec));
   codec.width /= 2;
   codec.height /= 2;
-  EXPECT_TRUE(channel_->SetSendStreamFormat(kSsrc, cricket::VideoFormat(
-      codec.width, codec.height,
-      cricket::VideoFormat::FpsToInterval(codec.framerate),
-      cricket::FOURCC_ANY)));
   EXPECT_TRUE(SetSend(true));
   EXPECT_TRUE(channel_->SetRender(true));
   EXPECT_EQ(0, renderer_.num_rendered_frames());
@@ -2097,4 +2093,33 @@ TEST_F(WebRtcVideoMediaChannelTest, TwoStreamsSendAndReceive) {
 TEST_F(WebRtcVideoMediaChannelTest, TwoStreamsReUseFirstStream) {
   Base::TwoStreamsReUseFirstStream(cricket::VideoCodec(100, "VP8", 640, 400, 30,
                                                        0));
+}
+
+// TODO(tvsriram): Fix these tests with unsignalled recv before adding again.
+TEST_F(WebRtcVideoMediaChannelTest, DISABLED_TwoStreamsSendAndUnsignalledRecv) {
+  Base::TwoStreamsSendAndUnsignalledRecv(cricket::VideoCodec(100, "VP8", 640,
+                                                             400, 30, 0));
+}
+
+// TODO(tvsriram): Fix these tests with unsignalled recv before adding again.
+TEST_F(WebRtcVideoMediaChannelTest,
+       DISABLED_TwoStreamsSendAndFailUnsignalledRecv) {
+  webrtc::Trace::set_level_filter(webrtc::kTraceAll);
+  Base::TwoStreamsSendAndFailUnsignalledRecv(
+      cricket::VideoCodec(100, "VP8", 640, 400, 30, 0));
+}
+
+// TODO(tvsriram): Fix these tests with unsignalled recv before adding again.
+TEST_F(WebRtcVideoMediaChannelTest,
+       DISABLED_TwoStreamsSendAndFailUnsignalledRecvInOneToOne) {
+  Base::TwoStreamsSendAndFailUnsignalledRecvInOneToOne(
+      cricket::VideoCodec(100, "VP8", 640, 400, 30, 0));
+}
+
+// TODO(tvsriram): Fix these tests with unsignalled recv before adding again.
+TEST_F(WebRtcVideoMediaChannelTest,
+       DISABLED_TwoStreamsAddAndRemoveUnsignalledRecv) {
+  Base::TwoStreamsAddAndRemoveUnsignalledRecv(cricket::VideoCodec(100, "VP8",
+                                                                  640, 400, 30,
+                                                                  0));
 }
