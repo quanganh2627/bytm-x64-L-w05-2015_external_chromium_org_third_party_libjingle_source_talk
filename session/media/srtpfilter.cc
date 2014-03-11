@@ -29,8 +29,9 @@
 
 #include "talk/session/media/srtpfilter.h"
 
+#include <string.h>
+
 #include <algorithm>
-#include <cstring>
 
 #include "talk/base/base64.h"
 #include "talk/base/logging.h"
@@ -619,7 +620,8 @@ bool SrtpSession::GetSendStreamPacketIndex(void* p, int in_len, int64* index) {
   if (stream == NULL)
     return false;
 
-  *index = rdbx_get_packet_index(&stream->rtp_rdbx);
+  // Shift packet index, put into network byte order
+  *index = be64_to_cpu(rdbx_get_packet_index(&stream->rtp_rdbx) << 16);
   return true;
 }
 
@@ -670,7 +672,10 @@ bool SrtpSession::SetKey(int type, const std::string& cs,
   // We want to set this option only for rtp packets.
   // By default policy structure is initialized to HMAC_SHA1.
 #if defined(ENABLE_EXTERNAL_AUTH)
-  policy.rtp.auth_type = EXTERNAL_HMAC_SHA1;
+  // Enable external HMAC authentication only for outgoing streams.
+  if (type == ssrc_any_outbound) {
+    policy.rtp.auth_type = EXTERNAL_HMAC_SHA1;
+  }
 #endif
   policy.next = NULL;
 

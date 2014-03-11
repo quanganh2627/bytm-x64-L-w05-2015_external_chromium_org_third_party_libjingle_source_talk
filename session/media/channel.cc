@@ -465,8 +465,6 @@ bool BaseChannel::SendPacket(bool rtcp, talk_base::Buffer* packet,
   }
 
   talk_base::PacketOptions options(dscp);
-  options.packet_time_params.rtp_sendtime_extension_id =
-      rtp_abs_sendtime_extn_id_;
   // Protect if needed.
   if (srtp_filter_.IsActive()) {
     bool res;
@@ -482,6 +480,8 @@ bool BaseChannel::SendPacket(bool rtcp, talk_base::Buffer* packet,
       res = srtp_filter_.ProtectRtp(
           data, len, static_cast<int>(packet->capacity()), &len);
 #else
+      options.packet_time_params.rtp_sendtime_extension_id =
+          rtp_abs_sendtime_extn_id_;
       res = srtp_filter_.ProtectRtp(
           data, len, static_cast<int>(packet->capacity()), &len,
           &options.packet_time_params.srtp_packet_index);
@@ -1216,7 +1216,7 @@ bool BaseChannel::SetBaseRemoteContent_w(const MediaContentDescription* content,
 void BaseChannel::MaybeCacheRtpAbsSendTimeHeaderExtension(
     const std::vector<RtpHeaderExtension>& extensions) {
   const RtpHeaderExtension* send_time_extension =
-      FindHeaderExtension(extensions, kRtpAbsoluteSendTimeHeaderExtension);
+      FindHeaderExtension(extensions, kRtpAbsoluteSenderTimeHeaderExtension);
   rtp_abs_sendtime_extn_id_ =
       send_time_extension ? send_time_extension->id : -1;
 }

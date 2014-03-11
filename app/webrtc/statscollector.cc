@@ -127,6 +127,8 @@ const char StatsReport::kStatsValueNamePlisSent[] = "googPlisSent";
 const char StatsReport::kStatsValueNamePacketsReceived[] = "packetsReceived";
 const char StatsReport::kStatsValueNamePacketsSent[] = "packetsSent";
 const char StatsReport::kStatsValueNamePacketsLost[] = "packetsLost";
+const char StatsReport::kStatsValueNamePreferredJitterBufferMs[] =
+    "googPreferredJitterBufferMs";
 const char StatsReport::kStatsValueNameReadable[] = "googReadable";
 const char StatsReport::kStatsValueNameRecvPacketGroupArrivalTimeDebug[] =
     "googReceivedPacketGroupArrivalTimeDebug";
@@ -256,6 +258,12 @@ void ExtractStats(const cricket::VoiceReceiverInfo& info, StatsReport* report) {
                    info.bytes_rcvd);
   report->AddValue(StatsReport::kStatsValueNameJitterReceived,
                    info.jitter_ms);
+  report->AddValue(StatsReport::kStatsValueNameJitterBufferMs,
+                   info.jitter_buffer_ms);
+  report->AddValue(StatsReport::kStatsValueNamePreferredJitterBufferMs,
+                   info.jitter_buffer_preferred_ms);
+  report->AddValue(StatsReport::kStatsValueNameCurrentDelayMs,
+                   info.delay_estimate_ms);
   report->AddValue(StatsReport::kStatsValueNameExpandRate,
                    talk_base::ToString<float>(info.expand_rate));
   report->AddValue(StatsReport::kStatsValueNamePacketsReceived,
@@ -914,7 +922,12 @@ void StatsCollector::UpdateStatsFromExistingLocalAudioTracks() {
     std::string ssrc_id = talk_base::ToString<uint32>(ssrc);
     StatsReport* report = GetReport(StatsReport::kStatsReportTypeSsrc,
                                     ssrc_id);
-    ASSERT(report != NULL);
+    if (report == NULL) {
+      // This can happen if a local audio track is added to a stream on the
+      // fly and the report has not been set up yet. Do nothing in this case.
+      LOG(LS_ERROR) << "Stats report does not exist for ssrc " << ssrc;
+      continue;
+    }
 
     // The same ssrc can be used by both local and remote audio tracks.
     std::string track_id;

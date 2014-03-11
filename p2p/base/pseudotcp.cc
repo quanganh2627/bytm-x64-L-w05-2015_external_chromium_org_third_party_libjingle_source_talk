@@ -27,8 +27,9 @@
 
 #include "talk/p2p/base/pseudotcp.h"
 
-#include <cstdio>
-#include <cstdlib>
+#include <stdio.h>
+#include <stdlib.h>
+
 #include <set>
 
 #include "talk/base/basictypes.h"
@@ -728,13 +729,16 @@ bool PseudoTcp::process(Segment& seg) {
   if ((seg.ack > m_snd_una) && (seg.ack <= m_snd_nxt)) {
     // Calculate round-trip time
     if (seg.tsecr) {
-      long rtt = talk_base::TimeDiff(now, seg.tsecr);
+      int32 rtt = talk_base::TimeDiff(now, seg.tsecr);
       if (rtt >= 0) {
         if (m_rx_srtt == 0) {
           m_rx_srtt = rtt;
           m_rx_rttvar = rtt / 2;
         } else {
-          m_rx_rttvar = (3 * m_rx_rttvar + abs(long(rtt - m_rx_srtt))) / 4;
+          uint32 unsigned_rtt = static_cast<uint32>(rtt);
+          uint32 abs_err = unsigned_rtt > m_rx_srtt ? unsigned_rtt - m_rx_srtt
+                                                    : m_rx_srtt - unsigned_rtt;
+          m_rx_rttvar = (3 * m_rx_rttvar + abs_err) / 4;
           m_rx_srtt = (7 * m_rx_srtt + rtt) / 8;
         }
         m_rx_rto = bound(MIN_RTO, m_rx_srtt +
