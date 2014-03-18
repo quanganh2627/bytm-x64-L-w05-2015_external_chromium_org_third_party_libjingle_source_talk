@@ -40,6 +40,7 @@
 @end
 
 @class APPRTCViewController;
+@class RTCVideoTrack;
 
 // The main application class of the AppRTCDemo iOS app demonstrating
 // interoperability between the Objcective C implementation of PeerConnection
@@ -52,5 +53,7 @@
 
 @property (strong, nonatomic) UIWindow *window;
 @property (strong, nonatomic) APPRTCViewController *viewController;
+
+- (void)closeVideoUI;
 
 @end

@@ -31,6 +31,8 @@
 
 #import "GAEChannelClient.h"
 #import "RTCICEServer.h"
+#import "APPRTCAppDelegate.h"
+#import "RTCMediaConstraints.h"
 
 @interface APPRTCAppClient ()
 
@@ -62,6 +64,7 @@
 @synthesize token = _token;
 @synthesize verboseLogging = _verboseLogging;
 @synthesize initiator = _initiator;
+@synthesize videoConstraints = _videoConstraints;
 
 - (id)init {
   if (self = [super init]) {
@@ -263,6 +266,9 @@
                           options:0
                             range:NSMakeRange(0, [self.roomHtml length])]) {
     [self showMessage:@"Room full"];
+    APPRTCAppDelegate *ad =
+      (APPRTCAppDelegate *)[[UIApplication sharedApplication] delegate];
+    [ad closeVideoUI];
     return;
   }
 
@@ -309,7 +315,7 @@
   NSArray *servers = [json objectForKey:@"iceServers"];
   NSMutableArray *ICEServers = [NSMutableArray array];
   for (NSDictionary *server in servers) {
-    NSString *url = [server objectForKey:@"url"];
+    NSString *url = [server objectForKey:@"urls"];
     NSString *username = json[@"username"];
     NSString *credential = [server objectForKey:@"credential"];
     if (!username) {
@@ -330,6 +336,18 @@
     [ICEServers addObject:ICEServer];
   }
   [self updateICEServers:ICEServers withTurnServer:turnServerUrl];
+
+  NSString* mc = [self findVar:@"mediaConstraints" strippingQuotes:NO];
+  if (mc) {
+    error = nil;
+    NSData *mcData = [mc dataUsingEncoding:NSUTF8StringEncoding];
+    json =
+      [NSJSONSerialization JSONObjectWithData:mcData options:0 error:&error];
+    NSAssert(!error, @"Unable to parse.  %@", error.localizedDescription);
+    if ([[json objectForKey:@"video"] boolValue]) {
+      self.videoConstraints = [[RTCMediaConstraints alloc] init];
+    }
+  }
 
   [self maybeLogMessage:
           [NSString stringWithFormat:@"About to open GAE with token:  %@",
