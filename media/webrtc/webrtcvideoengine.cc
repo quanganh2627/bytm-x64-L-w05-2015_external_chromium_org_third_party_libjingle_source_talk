@@ -173,15 +173,10 @@ struct FlushBlackFrameData : public talk_base::MessageData {
 class WebRtcRenderAdapter : public webrtc::ExternalRenderer {
  public:
   explicit WebRtcRenderAdapter(VideoRenderer* renderer)
-      : renderer_(renderer), width_(0), height_(0), watermark_enabled_(false) {
+      : renderer_(renderer), width_(0), height_(0) {
   }
 
   virtual ~WebRtcRenderAdapter() {
-  }
-
-  void set_watermark_enabled(bool enable) {
-    talk_base::CritScope cs(&crit_);
-    watermark_enabled_ = enable;
   }
 
   void SetRenderer(VideoRenderer* renderer) {
@@ -250,7 +245,6 @@ class WebRtcRenderAdapter : public webrtc::ExternalRenderer {
     video_frame.Alias(buffer, buffer_size, width_, height_,
                       1, 1, elapsed_time, time_stamp, 0);
 
-
     // Sanity check on decoded frame size.
     if (buffer_size != static_cast<int>(VideoFrame::SizeOf(width_, height_))) {
       LOG(LS_WARNING) << "WebRtcRenderAdapter received a strange frame size: "
@@ -294,7 +288,6 @@ class WebRtcRenderAdapter : public webrtc::ExternalRenderer {
   unsigned int width_;
   unsigned int height_;
   talk_base::RateTracker frame_rate_tracker_;
-  bool watermark_enabled_;
 };
 
 class WebRtcDecoderObserver : public webrtc::ViEDecoderObserver {
@@ -2597,10 +2590,13 @@ void WebRtcVideoMediaChannel::OnPacketReceived(
   int processing_channel = GetRecvChannelNum(ssrc);
   if (processing_channel == -1) {
     // Allocate an unsignalled recv channel for processing in conference mode.
-    if (!InConferenceMode() ||
-        !CreateUnsignalledRecvChannel(ssrc, &processing_channel)) {
+    if (!InConferenceMode()) {
       // If we cant find or allocate one, use the default.
       processing_channel = video_channel();
+    } else if (!CreateUnsignalledRecvChannel(ssrc, &processing_channel)) {
+      // If we cant create an unsignalled recv channel, drop the packet in
+      // conference mode.
+      return;
     }
   }
 
@@ -3149,11 +3145,9 @@ bool WebRtcVideoMediaChannel::CreateChannel(uint32 ssrc_key,
 
 bool WebRtcVideoMediaChannel::CreateUnsignalledRecvChannel(
     uint32 ssrc_key, int* out_channel_id) {
-  int unsignalled_recv_channel_limit = 0;
-  // TODO(tvsriram): Enable this once we fix handling packets
-  // in default channel with unsignalled recv.
-  //    options_.unsignalled_recv_stream_limit.GetWithDefaultIfUnset(
-  //        kNumDefaultUnsignalledVideoRecvStreams);
+  int unsignalled_recv_channel_limit =
+      options_.unsignalled_recv_stream_limit.GetWithDefaultIfUnset(
+          kNumDefaultUnsignalledVideoRecvStreams);
   if (num_unsignalled_recv_channels_ >= unsignalled_recv_channel_limit) {
     return false;
   }
