@@ -77,6 +77,14 @@ const char MediaConstraintsInterface::kCpuUnderuseThreshold[] =
 const char MediaConstraintsInterface::kCpuOveruseThreshold[] =
     "googCpuOveruseThreshold";
 
+// Google-specific PeerConnection constraint keys.
+const char MediaConstraintsInterface::kImprovedWifiBwe[] =
+    "googImprovedWifiBwe";
+const char MediaConstraintsInterface::kScreencastMinBitrate[] =
+    "googScreencastMinBitrate";
+const char MediaConstraintsInterface::kSkipEncodingUnusedStreams[] =
+    "googSkipEncodingUnusedStreams";
+
 // Constraint keys for CreateOffer / CreateAnswer defined in W3C specification.
 const char MediaConstraintsInterface::kOfferToReceiveAudio[] =
     "OfferToReceiveAudio";
@@ -97,6 +105,8 @@ const char MediaConstraintsInterface::kEnableRtpDataChannels[] =
     "RtpDataChannels";
 const char MediaConstraintsInterface::kEnableDscp[] = "googDscp";
 const char MediaConstraintsInterface::kEnableIPv6[] = "googIPv6";
+const char MediaConstraintsInterface::kEnableVideoSuspendBelowMinBitrate[] =
+    "googSuspendBelowMinBitrate";
 
 // Set |value| to the value associated with the first appearance of |key|, or
 // return false if |key| is not found.

@@ -60,6 +60,7 @@
 #include "talk/media/webrtc/webrtcvie.h"
 #include "talk/media/webrtc/webrtcvoe.h"
 #include "talk/media/webrtc/webrtcvoiceengine.h"
+#include "webrtc/experiments.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/remote_bitrate_estimator.h"
 
 #if !defined(LIBPEERCONNECTION_LIB)
@@ -1570,7 +1571,7 @@ WebRtcVideoMediaChannel::~WebRtcVideoMediaChannel() {
 
   // Remove all receive streams and the default channel.
   while (!recv_channels_.empty()) {
-    RemoveRecvStream(recv_channels_.begin()->first);
+    RemoveRecvStreamInternal(recv_channels_.begin()->first);
   }
 
   // Unregister the channel from the engine.
@@ -1778,6 +1779,11 @@ bool WebRtcVideoMediaChannel::SetSend(bool send) {
 }
 
 bool WebRtcVideoMediaChannel::AddSendStream(const StreamParams& sp) {
+  if (sp.first_ssrc() == 0) {
+    LOG(LS_ERROR) << "AddSendStream with 0 ssrc is not supported.";
+    return false;
+  }
+
   LOG(LS_INFO) << "AddSendStream " << sp.ToString();
 
   if (!IsOneSsrcStream(sp) && !IsSimulcastStream(sp)) {
@@ -1859,6 +1865,11 @@ bool WebRtcVideoMediaChannel::AddSendStream(const StreamParams& sp) {
 }
 
 bool WebRtcVideoMediaChannel::RemoveSendStream(uint32 ssrc) {
+  if (ssrc == 0) {
+    LOG(LS_ERROR) << "RemoveSendStream with 0 ssrc is not supported.";
+    return false;
+  }
+
   uint32 ssrc_key;
   if (!GetSendChannelKey(ssrc, &ssrc_key)) {
     LOG(LS_WARNING) << "Try to remove stream with ssrc " << ssrc
@@ -1899,6 +1910,11 @@ bool WebRtcVideoMediaChannel::RemoveSendStream(uint32 ssrc) {
 }
 
 bool WebRtcVideoMediaChannel::AddRecvStream(const StreamParams& sp) {
+  if (sp.first_ssrc() == 0) {
+    LOG(LS_ERROR) << "AddRecvStream with 0 ssrc is not supported.";
+    return false;
+  }
+
   // TODO(zhurunz) Remove this once BWE works properly across different send
   // and receive channels.
   // Reuse default channel for recv stream in 1:1 call.
@@ -1981,8 +1997,15 @@ bool WebRtcVideoMediaChannel::AddRecvStream(const StreamParams& sp) {
 }
 
 bool WebRtcVideoMediaChannel::RemoveRecvStream(uint32 ssrc) {
-  RecvChannelMap::iterator it = recv_channels_.find(ssrc);
+  if (ssrc == 0) {
+    LOG(LS_ERROR) << "RemoveRecvStream with 0 ssrc is not supported.";
+    return false;
+  }
+  return RemoveRecvStreamInternal(ssrc);
+}
 
+bool WebRtcVideoMediaChannel::RemoveRecvStreamInternal(uint32 ssrc) {
+  RecvChannelMap::iterator it = recv_channels_.find(ssrc);
   if (it == recv_channels_.end()) {
     // TODO(perkj): Remove this once BWE works properly across different send
     // and receive channels.
@@ -2815,6 +2838,13 @@ bool WebRtcVideoMediaChannel::SetOptions(const VideoOptions &options) {
     conference_mode_turned_off = true;
   }
 
+#ifdef USE_WEBRTC_DEV_BRANCH
+  bool improved_wifi_bwe_changed =
+      options.use_improved_wifi_bandwidth_estimator.IsSet() &&
+      options_.use_improved_wifi_bandwidth_estimator !=
+          options.use_improved_wifi_bandwidth_estimator;
+
+#endif
 
   // Save the options, to be interpreted where appropriate.
   // Use options_.SetAll() instead of assignment so that unset value in options
@@ -2939,6 +2969,19 @@ bool WebRtcVideoMediaChannel::SetOptions(const VideoOptions &options) {
       LOG(LS_WARNING) << "Cannot disable video suspension once it is enabled";
     }
   }
+#ifdef USE_WEBRTC_DEV_BRANCH
+  if (improved_wifi_bwe_changed) {
+    webrtc::Config config;
+    config.Set(new webrtc::AimdRemoteRateControl(
+        options_.use_improved_wifi_bandwidth_estimator
+          .GetWithDefaultIfUnset(false)));
+    for (SendChannelMap::iterator it = send_channels_.begin();
+            it != send_channels_.end(); ++it) {
+      engine()->vie()->network()->SetBandwidthEstimationConfig(
+          it->second->channel_id(), config);
+    }
+  }
+#endif
   return true;
 }
 
@@ -3405,6 +3448,11 @@ bool WebRtcVideoMediaChannel::ConfigureSending(int channel_id,
       LOG_RTCERR2(SetSenderBufferingMode, channel_id, buffer_latency);
     }
   }
+
+  if (options_.suspend_below_min_bitrate.GetWithDefaultIfUnset(false)) {
+    engine()->vie()->codec()->SuspendBelowMinBitrate(channel_id);
+  }
+
   // The remb status direction correspond to the RTP stream (and not the RTCP
   // stream). I.e. if send remb is enabled it means it is receiving remote
   // rembs and should use them to estimate bandwidth. Receive remb mean that
@@ -3726,6 +3774,11 @@ bool WebRtcVideoMediaChannel::MaybeResetVieSendCodec(
   // Disable denoising for screencasting.
   bool enable_denoising =
       options_.video_noise_reduction.GetWithDefaultIfUnset(false);
+#ifdef USE_WEBRTC_DEV_BRANCH
+  int screencast_min_bitrate =
+      options_.screencast_min_bitrate.GetWithDefaultIfUnset(0);
+  bool leaky_bucket = options_.video_leaky_bucket.GetWithDefaultIfUnset(false);
+#endif
   bool denoising = !is_screencast && enable_denoising;
   bool reset_send_codec =
       target_width != cur_width || target_height != cur_height ||
@@ -3739,18 +3792,44 @@ bool WebRtcVideoMediaChannel::MaybeResetVieSendCodec(
     vie_codec.height = target_height;
     vie_codec.maxFramerate = target_codec.maxFramerate;
     vie_codec.startBitrate = target_codec.startBitrate;
+#ifdef USE_WEBRTC_DEV_BRANCH
+    vie_codec.targetBitrate = 0;
+#endif
     vie_codec.codecSpecific.VP8.automaticResizeOn = automatic_resize;
     vie_codec.codecSpecific.VP8.denoisingOn = denoising;
     vie_codec.codecSpecific.VP8.frameDroppingOn = vp8_frame_dropping;
-    // TODO(mflodman): Remove 'is_screencast' check when screen cast settings
-    // are treated correctly in WebRTC.
-    if (!is_screencast)
+    bool maybe_change_start_bitrate = !is_screencast;
+#ifdef USE_WEBRTC_DEV_BRANCH
+    // TODO(pbos): When USE_WEBRTC_DEV_BRANCH is removed, remove
+    // maybe_change_start_bitrate as well. MaybeChangeStartBitrate should be
+    // called for all content.
+    maybe_change_start_bitrate = true;
+#endif
+    if (maybe_change_start_bitrate)
       MaybeChangeStartBitrate(channel_id, &vie_codec);
 
     if (engine()->vie()->codec()->SetSendCodec(channel_id, vie_codec) != 0) {
       LOG_RTCERR1(SetSendCodec, channel_id);
       return false;
     }
+
+#ifdef USE_WEBRTC_DEV_BRANCH
+    if (is_screencast) {
+      engine()->vie()->rtp()->SetMinTransmitBitrate(channel_id,
+                                                    screencast_min_bitrate);
+      // If screencast and min bitrate set, force enable pacer.
+      if (screencast_min_bitrate > 0) {
+        engine()->vie()->rtp()->SetTransmissionSmoothingStatus(channel_id,
+                                                               true);
+      }
+    } else {
+      // In case of switching from screencast to regular capture, set
+      // min bitrate padding and pacer back to defaults.
+      engine()->vie()->rtp()->SetMinTransmitBitrate(channel_id, 0);
+      engine()->vie()->rtp()->SetTransmissionSmoothingStatus(channel_id,
+                                                             leaky_bucket);
+    }
+#endif
     if (reset) {
       *reset = true;
     }
