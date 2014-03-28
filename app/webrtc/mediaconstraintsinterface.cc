@@ -69,13 +69,6 @@ const char MediaConstraintsInterface::kNoiseReduction[] = "googNoiseReduction";
 const char MediaConstraintsInterface::kLeakyBucket[] = "googLeakyBucket";
 const char MediaConstraintsInterface::kTemporalLayeredScreencast[] =
     "googTemporalLayeredScreencast";
-// TODO(ronghuawu): Remove once cpu overuse detection is stable.
-const char MediaConstraintsInterface::kCpuOveruseDetection[] =
-    "googCpuOveruseDetection";
-const char MediaConstraintsInterface::kCpuUnderuseThreshold[] =
-    "googCpuUnderuseThreshold";
-const char MediaConstraintsInterface::kCpuOveruseThreshold[] =
-    "googCpuOveruseThreshold";
 
 // Google-specific PeerConnection constraint keys.
 const char MediaConstraintsInterface::kImprovedWifiBwe[] =
@@ -84,6 +77,21 @@ const char MediaConstraintsInterface::kScreencastMinBitrate[] =
     "googScreencastMinBitrate";
 const char MediaConstraintsInterface::kSkipEncodingUnusedStreams[] =
     "googSkipEncodingUnusedStreams";
+// TODO(ronghuawu): Remove once cpu overuse detection is stable.
+const char MediaConstraintsInterface::kCpuOveruseDetection[] =
+    "googCpuOveruseDetection";
+const char MediaConstraintsInterface::kCpuUnderuseThreshold[] =
+    "googCpuUnderuseThreshold";
+const char MediaConstraintsInterface::kCpuOveruseThreshold[] =
+    "googCpuOveruseThreshold";
+const char MediaConstraintsInterface::kCpuOveruseEncodeUsage[] =
+    "googCpuOveruseEncodeUsage";
+const char MediaConstraintsInterface::kHighStartBitrate[] =
+    "googHighStartBitrate";
+const char MediaConstraintsInterface::kHighBitrate[] =
+    "googHighBitrate";
+const char MediaConstraintsInterface::kVeryHighBitrate[] =
+    "googVeryHighBitrate";
 
 // Constraint keys for CreateOffer / CreateAnswer defined in W3C specification.
 const char MediaConstraintsInterface::kOfferToReceiveAudio[] =

@@ -62,6 +62,7 @@ class VideoRenderer;
 const int kMinRtpHeaderExtensionId = 1;
 const int kMaxRtpHeaderExtensionId = 255;
 const int kScreencastDefaultFps = 5;
+const int kHighStartBitrate = 1500;
 
 // Used in AudioOptions and VideoOptions to signify "unset" values.
 template <class T>
@@ -317,6 +318,7 @@ struct VideoOptions {
     cpu_overuse_detection.SetFrom(change.cpu_overuse_detection);
     cpu_underuse_threshold.SetFrom(change.cpu_underuse_threshold);
     cpu_overuse_threshold.SetFrom(change.cpu_overuse_threshold);
+    cpu_overuse_encode_usage.SetFrom(change.cpu_overuse_encode_usage);
     conference_mode.SetFrom(change.conference_mode);
     process_adaptation_threshhold.SetFrom(change.process_adaptation_threshhold);
     system_low_adaptation_threshhold.SetFrom(
@@ -352,6 +354,7 @@ struct VideoOptions {
         cpu_overuse_detection == o.cpu_overuse_detection &&
         cpu_underuse_threshold == o.cpu_underuse_threshold &&
         cpu_overuse_threshold == o.cpu_overuse_threshold &&
+        cpu_overuse_encode_usage == o.cpu_overuse_encode_usage &&
         conference_mode == o.conference_mode &&
         process_adaptation_threshhold == o.process_adaptation_threshhold &&
         system_low_adaptation_threshhold ==
@@ -391,6 +394,8 @@ struct VideoOptions {
     ost << ToStringIfSet("cpu overuse detection", cpu_overuse_detection);
     ost << ToStringIfSet("cpu underuse threshold", cpu_underuse_threshold);
     ost << ToStringIfSet("cpu overuse threshold", cpu_overuse_threshold);
+    ost << ToStringIfSet("cpu overuse encode usage",
+                         cpu_overuse_encode_usage);
     ost << ToStringIfSet("conference mode", conference_mode);
     ost << ToStringIfSet("process", process_adaptation_threshhold);
     ost << ToStringIfSet("low", system_low_adaptation_threshhold);
@@ -437,7 +442,7 @@ struct VideoOptions {
   // Enable WebRTC leaky bucket when sending media packets.
   Settable<bool> video_leaky_bucket;
   // Set highest bitrate mode for video.
-  Settable<int> video_highest_bitrate;
+  Settable<HighestBitrate> video_highest_bitrate;
   // Enable WebRTC Cpu Overuse Detection, which is a new version of the CPU
   // adaptation algorithm. So this option will override the
   // |adapt_input_to_cpu_usage|.
@@ -446,6 +451,8 @@ struct VideoOptions {
   Settable<int> cpu_underuse_threshold;
   // High threshold for cpu overuse adaptation in ms.  (Adapt down)
   Settable<int> cpu_overuse_threshold;
+  // Use encode usage for cpu detection.
+  Settable<bool> cpu_overuse_encode_usage;
   // Use conference mode?
   Settable<bool> conference_mode;
   // Threshhold for process cpu adaptation.  (Process limit)
