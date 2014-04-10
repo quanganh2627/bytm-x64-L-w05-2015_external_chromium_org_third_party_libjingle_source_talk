@@ -39,8 +39,6 @@
 
 using namespace talk_base;
 
-const int MAX = 65536;
-
 // Generates a sequence of numbers (collaboratively).
 class TestGenerator {
  public:
@@ -88,7 +86,6 @@ class SocketClient : public TestGenerator, public sigslot::has_slots<> {
     uint32 prev = reinterpret_cast<const uint32*>(buf)[0];
     uint32 result = Next(prev);
 
-    //socket_->set_readable(last < MAX);
     post_thread_->PostDelayed(200, post_handler_, 0, new TestMessage(result));
   }
 
@@ -102,7 +99,7 @@ class SocketClient : public TestGenerator, public sigslot::has_slots<> {
 class MessageClient : public MessageHandler, public TestGenerator {
  public:
   MessageClient(Thread* pth, Socket* socket)
-      : thread_(pth), socket_(socket) {
+      : socket_(socket) {
   }
 
   virtual ~MessageClient() {
@@ -117,7 +114,6 @@ class MessageClient : public MessageHandler, public TestGenerator {
   }
 
  private:
-  Thread* thread_;
   Socket* socket_;
 };
 
