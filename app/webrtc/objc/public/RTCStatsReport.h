@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2012 Google Inc.
+ * Copyright 2014, Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,16 +25,21 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "talk/media/devices/deviceinfo.h"
+#import <Foundation/Foundation.h>
 
-namespace cricket {
+// ObjectiveC friendly wrapper around a StatsReport object.
+// See talk/app/webrtc/statsypes.h
+@interface RTCStatsReport : NSObject
 
-bool GetUsbId(const Device& device, std::string* usb_id) {
-  return false;
-}
+@property(nonatomic, readonly) NSString* reportId;
+@property(nonatomic, readonly) NSString* type;
+@property(nonatomic, readonly) CFTimeInterval timestamp;
+@property(nonatomic, readonly) NSArray* values;  // NSArray of RTCPair*.
 
-bool GetUsbVersion(const Device& device, std::string* usb_version) {
-  return false;
-}
+#ifndef DOXYGEN_SHOULD_SKIP_THIS
+// Disallow init and don't add to documentation
+- (id)init __attribute__((
+    unavailable("init is not a supported initializer for this class.")));
+#endif /* DOXYGEN_SHOULD_SKIP_THIS */
 
-}  // namespace cricket
+@end

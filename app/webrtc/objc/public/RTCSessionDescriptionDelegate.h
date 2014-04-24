@@ -25,54 +25,25 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Enums that are common to the ObjectiveC version of the PeerConnection API.
+#import <Foundation/Foundation.h>
 
-// RTCICEConnectionState correspond to the states in webrtc::ICEConnectionState.
-typedef enum {
-  RTCICEConnectionNew,
-  RTCICEConnectionChecking,
-  RTCICEConnectionConnected,
-  RTCICEConnectionCompleted,
-  RTCICEConnectionFailed,
-  RTCICEConnectionDisconnected,
-  RTCICEConnectionClosed,
-} RTCICEConnectionState;
+@class RTCPeerConnection;
+@class RTCSessionDescription;
 
-// RTCICEGatheringState the states in webrtc::ICEGatheringState.
-typedef enum {
-  RTCICEGatheringNew,
-  RTCICEGatheringGathering,
-  RTCICEGatheringComplete,
-} RTCICEGatheringState;
+extern NSString* const kRTCSessionDescriptionDelegateErrorDomain;
+extern int const kRTCSessionDescriptionDelegateErrorCode;
 
-// RTCSignalingState correspond to the states in webrtc::SignalingState.
-typedef enum {
-  RTCSignalingStable,
-  RTCSignalingHaveLocalOffer,
-  RTCSignalingHaveLocalPrAnswer,
-  RTCSignalingHaveRemoteOffer,
-  RTCSignalingHaveRemotePrAnswer,
-  RTCSignalingClosed,
-} RTCSignalingState;
+// RTCSessionDescriptionDelegate is a protocol for listening to callback
+// messages when RTCSessionDescriptions are created or set.
+@protocol RTCSessionDescriptionDelegate<NSObject>
 
-// RTCStatsOutputLevel correspond to webrtc::StatsOutputLevel
-typedef enum {
-  RTCStatsOutputLevelStandard,
-  RTCStatsOutputLevelDebug,
-} RTCStatsOutputLevel;
+// Called when creating a session.
+- (void)peerConnection:(RTCPeerConnection *)peerConnection
+    didCreateSessionDescription:(RTCSessionDescription *)sdp
+                          error:(NSError *)error;
 
-// RTCSourceState corresponds to the states in webrtc::SourceState.
-typedef enum {
-  RTCSourceStateInitializing,
-  RTCSourceStateLive,
-  RTCSourceStateEnded,
-  RTCSourceStateMuted,
-} RTCSourceState;
+// Called when setting a local or remote description.
+- (void)peerConnection:(RTCPeerConnection *)peerConnection
+    didSetSessionDescriptionWithError:(NSError *)error;
 
-// RTCTrackState corresponds to the states in webrtc::TrackState.
-typedef enum {
-  RTCTrackStateInitializing,
-  RTCTrackStateLive,
-  RTCTrackStateEnded,
-  RTCTrackStateFailed,
-} RTCTrackState;
+@end
