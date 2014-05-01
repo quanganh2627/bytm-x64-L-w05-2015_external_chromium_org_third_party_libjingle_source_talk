@@ -297,6 +297,18 @@ void TurnPort::PrepareAddress() {
 }
 
 void TurnPort::OnSocketConnect(talk_base::AsyncPacketSocket* socket) {
+  ASSERT(server_address_.proto == PROTO_TCP);
+  // Do not use this port if the socket bound to a different address than
+  // the one we asked for. This is seen in Chrome, where TCP sockets cannot be
+  // given a binding address, and the platform is expected to pick the
+  // correct local address.
+  if (socket->GetLocalAddress().ipaddr() != ip()) {
+    LOG(LS_WARNING) << "Socket is bound to a different address then the "
+                    << "local port. Discarding TURN port.";
+    OnAllocateError();
+    return;
+  }
+
   LOG(LS_INFO) << "TurnPort connected to " << socket->GetRemoteAddress()
                << " using tcp.";
   SendRequest(new TurnAllocateRequest(this), 0);
@@ -470,9 +482,9 @@ void TurnPort::OnSendStunPacket(const void* data, size_t size,
 void TurnPort::OnStunAddress(const talk_base::SocketAddress& address) {
   if (server_address_.proto == PROTO_UDP  &&
       address != socket_->GetLocalAddress()) {
-    AddAddress(address,
-               socket_->GetLocalAddress(),
-               socket_->GetLocalAddress(),
+    AddAddress(address,  // Candidate address.
+               socket_->GetLocalAddress(),  // Base address.
+               socket_->GetLocalAddress(),  // Related address.
                UDP_PROTOCOL_NAME,
                STUN_PORT_TYPE,
                ICE_TYPE_PREFERENCE_SRFLX,
@@ -482,10 +494,11 @@ void TurnPort::OnStunAddress(const talk_base::SocketAddress& address) {
 
 void TurnPort::OnAllocateSuccess(const talk_base::SocketAddress& address,
                                  const talk_base::SocketAddress& stun_address) {
+  // For relayed candidate, Base is the candidate itself.
   connected_ = true;
-  AddAddress(address,
-             socket_->GetLocalAddress(),
-             stun_address,
+  AddAddress(address,  // Candidate address.
+             address,  // Base address.
+             stun_address,  // Related address.
              UDP_PROTOCOL_NAME,
              RELAY_PORT_TYPE,
              GetRelayPreference(server_address_.proto, server_address_.secure),
