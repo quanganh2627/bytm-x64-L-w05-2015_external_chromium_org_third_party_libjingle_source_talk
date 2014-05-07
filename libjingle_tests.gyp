@@ -357,6 +357,7 @@
         'p2p/client/connectivitychecker_unittest.cc',
         'p2p/client/fakeportallocator.h',
         'p2p/client/portallocator_unittest.cc',
+        'session/media/bundlefilter_unittest.cc',
         'session/media/channel_unittest.cc',
         'session/media/channelmanager_unittest.cc',
         'session/media/currentspeakermonitor_unittest.cc',
@@ -366,7 +367,6 @@
         'session/media/mediasessionclient_unittest.cc',
         'session/media/rtcpmuxfilter_unittest.cc',
         'session/media/srtpfilter_unittest.cc',
-        'session/media/ssrcmuxfilter_unittest.cc',
       ],
       'conditions': [
         ['OS=="win"', {
@@ -535,8 +535,20 @@
           ],
           'xcode_settings': {
             'CLANG_ENABLE_OBJC_ARC': 'YES',
+            # common.gypi enables this for mac but we want this to be disabled
+            # like it is for ios.
+            'CLANG_WARN_OBJC_MISSING_PROPERTY_SYNTHESIS': 'NO',
             'INFOPLIST_FILE': '<(infoplist_file)',
           },
+          'conditions': [
+            ['OS=="mac"', {
+              'xcode_settings': {
+                # Need to build against 10.7 framework for full ARC support
+                # on OSX.
+                'MACOSX_DEPLOYMENT_TARGET' : '10.7',
+              },
+            }],
+          ],
         },  # target libjingle_peerconnection_objc_test
       ],
     }],

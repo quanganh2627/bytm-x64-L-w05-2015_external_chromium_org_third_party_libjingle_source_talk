@@ -220,22 +220,6 @@ static bool IsNackEnabled(const AudioCodec& codec) {
                                               kParamValueEmpty));
 }
 
-// TODO(mallinath) - Remove this after trunk of webrtc is pushed to GTP.
-#if !defined(USE_WEBRTC_DEV_BRANCH)
-bool operator==(const webrtc::CodecInst& lhs, const webrtc::CodecInst& rhs) {
-  return lhs.pltype == rhs.pltype &&
-         (_stricmp(lhs.plname, rhs.plname) == 0) &&
-         lhs.plfreq == rhs.plfreq &&
-         lhs.pacsize == rhs.pacsize &&
-         lhs.channels == rhs.channels &&
-         lhs.rate == rhs.rate;
-}
-
-bool operator!=(const webrtc::CodecInst& lhs, const webrtc::CodecInst& rhs) {
-  return !(lhs == rhs);
-}
-#endif
-
 // Gets the default set of options applied to the engine. Historically, these
 // were supplied as a combination of flags from the channel manager (ec, agc,
 // ns, and highpass) and the rest hardcoded in InitInternal.
@@ -399,11 +383,9 @@ void WebRtcVoiceEngine::Construct() {
   rtp_header_extensions_.push_back(
       RtpHeaderExtension(kRtpAudioLevelHeaderExtension,
                          kRtpAudioLevelHeaderExtensionDefaultId));
-#ifdef USE_WEBRTC_DEV_BRANCH
   rtp_header_extensions_.push_back(
       RtpHeaderExtension(kRtpAbsoluteSenderTimeHeaderExtension,
                          kRtpAbsoluteSenderTimeHeaderExtensionDefaultId));
-#endif
   options_ = GetDefaultEngineOptions();
 }
 
@@ -820,7 +802,6 @@ bool WebRtcVoiceEngine::ApplyOptions(const AudioOptions& options_in) {
     }
   }
 
-#ifdef USE_WEBRTC_DEV_BRANCH
   bool experimental_ns;
   if (options.experimental_ns.Get(&experimental_ns)) {
     webrtc::AudioProcessing* audioproc =
@@ -837,7 +818,6 @@ bool WebRtcVoiceEngine::ApplyOptions(const AudioOptions& options_in) {
                       << experimental_ns;
     }
   }
-#endif  // USE_WEBRTC_DEV_BRANCH
 
   bool highpass_filter;
   if (options.highpass_filter.Get(&highpass_filter)) {
@@ -914,7 +894,6 @@ bool WebRtcVoiceEngine::ApplyOptions(const AudioOptions& options_in) {
       LOG_RTCERR1(SetPlayoutSampleRate, playout_sample_rate);
     }
   }
-
 
   return true;
 }
@@ -1719,14 +1698,12 @@ class WebRtcVoiceMediaChannel::WebRtcVoiceChannelRenderer
                       int sample_rate,
                       int number_of_channels,
                       int number_of_frames) OVERRIDE {
-#ifdef USE_WEBRTC_DEV_BRANCH
     voe_audio_transport_->OnData(channel_,
                                  audio_data,
                                  bits_per_sample,
                                  sample_rate,
                                  number_of_channels,
                                  number_of_frames);
-#endif
   }
 
   // Callback from the |renderer_| when it is going away. In case Start() has
@@ -2225,74 +2202,96 @@ bool WebRtcVoiceMediaChannel::SetSendCodec(
 
 bool WebRtcVoiceMediaChannel::SetRecvRtpHeaderExtensions(
     const std::vector<RtpHeaderExtension>& extensions) {
-#ifdef USE_WEBRTC_DEV_BRANCH
-  const RtpHeaderExtension* send_time_extension =
-      FindHeaderExtension(extensions, kRtpAbsoluteSenderTimeHeaderExtension);
+  if (receive_extensions_ == extensions) {
+    return true;
+  }
+
+  // The default channel may or may not be in |receive_channels_|. Set the rtp
+  // header extensions for default channel regardless.
+  if (!SetChannelRecvRtpHeaderExtensions(voe_channel(), extensions)) {
+    return false;
+  }
 
   // Loop through all receive channels and enable/disable the extensions.
   for (ChannelMap::const_iterator channel_it = receive_channels_.begin();
        channel_it != receive_channels_.end(); ++channel_it) {
-    int channel_id = channel_it->second->channel();
-    if (!SetHeaderExtension(
-        &webrtc::VoERTP_RTCP::SetReceiveAbsoluteSenderTimeStatus, channel_id,
-        send_time_extension)) {
+    if (!SetChannelRecvRtpHeaderExtensions(channel_it->second->channel(),
+                                           extensions)) {
       return false;
     }
   }
-#endif
+
+  receive_extensions_ = extensions;
+  return true;
+}
+
+bool WebRtcVoiceMediaChannel::SetChannelRecvRtpHeaderExtensions(
+    int channel_id, const std::vector<RtpHeaderExtension>& extensions) {
+#ifdef USE_WEBRTC_DEV_BRANCH
+  const RtpHeaderExtension* audio_level_extension =
+      FindHeaderExtension(extensions, kRtpAudioLevelHeaderExtension);
+  if (!SetHeaderExtension(
+      &webrtc::VoERTP_RTCP::SetReceiveAudioLevelIndicationStatus, channel_id,
+      audio_level_extension)) {
+    return false;
+  }
+#endif  // USE_WEBRTC_DEV_BRANCH
+
+  const RtpHeaderExtension* send_time_extension =
+      FindHeaderExtension(extensions, kRtpAbsoluteSenderTimeHeaderExtension);
+  if (!SetHeaderExtension(
+      &webrtc::VoERTP_RTCP::SetReceiveAbsoluteSenderTimeStatus, channel_id,
+      send_time_extension)) {
+    return false;
+  }
   return true;
 }
 
 bool WebRtcVoiceMediaChannel::SetSendRtpHeaderExtensions(
     const std::vector<RtpHeaderExtension>& extensions) {
+  if (send_extensions_ == extensions) {
+    return true;
+  }
+
+  // The default channel may or may not be in |send_channels_|. Set the rtp
+  // header extensions for default channel regardless.
+
+  if (!SetChannelSendRtpHeaderExtensions(voe_channel(), extensions)) {
+    return false;
+  }
+
+  // Loop through all send channels and enable/disable the extensions.
+  for (ChannelMap::const_iterator channel_it = send_channels_.begin();
+       channel_it != send_channels_.end(); ++channel_it) {
+    if (!SetChannelSendRtpHeaderExtensions(channel_it->second->channel(),
+                                           extensions)) {
+      return false;
+    }
+  }
+
+  send_extensions_ = extensions;
+  return true;
+}
+
+bool WebRtcVoiceMediaChannel::SetChannelSendRtpHeaderExtensions(
+    int channel_id, const std::vector<RtpHeaderExtension>& extensions) {
   const RtpHeaderExtension* audio_level_extension =
       FindHeaderExtension(extensions, kRtpAudioLevelHeaderExtension);
-#ifdef USE_WEBRTC_DEV_BRANCH
+
+  if (!SetHeaderExtension(
+      &webrtc::VoERTP_RTCP::SetSendAudioLevelIndicationStatus, channel_id,
+      audio_level_extension)) {
+    return false;
+  }
+
   const RtpHeaderExtension* send_time_extension =
       FindHeaderExtension(extensions, kRtpAbsoluteSenderTimeHeaderExtension);
-#endif
-
-#ifndef USE_WEBRTC_DEV_BRANCH
   if (!SetHeaderExtension(
-      &webrtc::VoERTP_RTCP::SetRTPAudioLevelIndicationStatus, voe_channel(),
-      audio_level_extension)) {
-    return false;
-  }
-#else
-  if (!SetHeaderExtension(
-      &webrtc::VoERTP_RTCP::SetSendAudioLevelIndicationStatus, voe_channel(),
-      audio_level_extension)) {
-    return false;
-  }
-  if (!SetHeaderExtension(
-      &webrtc::VoERTP_RTCP::SetSendAbsoluteSenderTimeStatus, voe_channel(),
+      &webrtc::VoERTP_RTCP::SetSendAbsoluteSenderTimeStatus, channel_id,
       send_time_extension)) {
     return false;
   }
-#endif
 
-  for (ChannelMap::const_iterator channel_it = send_channels_.begin();
-       channel_it != send_channels_.end(); ++channel_it) {
-    int channel_id = channel_it->second->channel();
-#ifndef USE_WEBRTC_DEV_BRANCH
-    if (!SetHeaderExtension(
-        &webrtc::VoERTP_RTCP::SetRTPAudioLevelIndicationStatus, channel_id,
-        audio_level_extension)) {
-      return false;
-    }
-#else
-    if (!SetHeaderExtension(
-        &webrtc::VoERTP_RTCP::SetSendAudioLevelIndicationStatus, channel_id,
-        audio_level_extension)) {
-      return false;
-    }
-    if (!SetHeaderExtension(
-        &webrtc::VoERTP_RTCP::SetSendAbsoluteSenderTimeStatus, channel_id,
-        send_time_extension)) {
-      return false;
-    }
-#endif
-  }
   return true;
 }
 
@@ -2396,6 +2395,7 @@ bool WebRtcVoiceMediaChannel::ChangeSend(int channel, SendFlags send) {
   return true;
 }
 
+// TODO(ronghuawu): Change this method to return bool.
 void WebRtcVoiceMediaChannel::ConfigureSendChannel(int channel) {
   if (engine()->voe()->network()->RegisterExternalTransport(
           channel, *this) == -1) {
@@ -2407,6 +2407,9 @@ void WebRtcVoiceMediaChannel::ConfigureSendChannel(int channel) {
 
   // Reset all recv codecs; they will be enabled via SetRecvCodecs.
   ResetRecvCodecs(channel);
+
+  // Set RTP header extension for the new channel.
+  SetChannelSendRtpHeaderExtensions(channel, send_extensions_);
 }
 
 bool WebRtcVoiceMediaChannel::DeleteChannel(int channel) {
@@ -2454,12 +2457,8 @@ bool WebRtcVoiceMediaChannel::AddSendStream(const StreamParams& sp) {
 
   // Save the channel to send_channels_, so that RemoveSendStream() can still
   // delete the channel in case failure happens below.
-#ifdef USE_WEBRTC_DEV_BRANCH
   webrtc::AudioTransport* audio_transport =
       engine()->voe()->base()->audio_transport();
-#else
-  webrtc::AudioTransport* audio_transport = NULL;
-#endif
   send_channels_.insert(std::make_pair(
       sp.first_ssrc(),
       new WebRtcVoiceChannelRenderer(channel, audio_transport)));
@@ -2556,12 +2555,8 @@ bool WebRtcVoiceMediaChannel::AddRecvStream(const StreamParams& sp) {
 
   // Reuse default channel for recv stream in non-conference mode call
   // when the default channel is not being used.
-#ifdef USE_WEBRTC_DEV_BRANCH
   webrtc::AudioTransport* audio_transport =
       engine()->voe()->base()->audio_transport();
-#else
-  webrtc::AudioTransport* audio_transport = NULL;
-#endif
   if (!InConferenceMode() && default_receive_ssrc_ == 0) {
     LOG(LS_INFO) << "Recv stream " << sp.first_ssrc()
                  << " reuse default channel";
@@ -2650,6 +2645,11 @@ bool WebRtcVoiceMediaChannel::ConfigureRecvChannel(int channel) {
     }
   }
   SetNack(channel, nack_enabled_);
+
+  // Set RTP header extension for the new channel.
+  if (!SetChannelRecvRtpHeaderExtensions(channel, receive_extensions_)) {
+    return false;
+  }
 
   return SetPlayout(channel, playout_);
 }
@@ -3526,13 +3526,15 @@ VoiceMediaChannel::Error
 bool WebRtcVoiceMediaChannel::SetHeaderExtension(ExtensionSetterFunction setter,
     int channel_id, const RtpHeaderExtension* extension) {
   bool enable = false;
-  unsigned char id = 0;
+  int id = 0;
+  std::string uri;
   if (extension) {
     enable = true;
     id = extension->id;
+    uri = extension->uri;
   }
   if ((engine()->voe()->rtp()->*setter)(channel_id, enable, id) != 0) {
-    LOG_RTCERR4(*setter, extension->uri, channel_id, enable, id);
+    LOG_RTCERR4(*setter, uri, channel_id, enable, id);
     return false;
   }
   return true;

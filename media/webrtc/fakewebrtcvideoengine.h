@@ -41,18 +41,6 @@
 #include "talk/media/webrtc/webrtcvideoencoderfactory.h"
 #include "talk/media/webrtc/webrtcvie.h"
 
-#if !defined(USE_WEBRTC_DEV_BRANCH)
-namespace webrtc {
-
-// This function is 'inline' to avoid link errors.
-inline bool operator==(const webrtc::VideoCodec& c1,
-                       const webrtc::VideoCodec& c2) {
-  return memcmp(&c1, &c2, sizeof(c1)) == 0;
-}
-
-}
-#endif
-
 namespace cricket {
 
 #define WEBRTC_CHECK_CAPTURER(capturer) \
@@ -288,10 +276,10 @@ class FakeWebRtcVideoEngine
           tmmbr_(false),
           remb_contribute_(false),
           remb_bw_partition_(false),
-          rtp_offset_send_id_(0),
-          rtp_offset_receive_id_(0),
-          rtp_absolute_send_time_send_id_(0),
-          rtp_absolute_send_time_receive_id_(0),
+          rtp_offset_send_id_(-1),
+          rtp_offset_receive_id_(-1),
+          rtp_absolute_send_time_send_id_(-1),
+          rtp_absolute_send_time_receive_id_(-1),
           sender_target_delay_(0),
           receiver_target_delay_(0),
           transmission_smoothing_(false),
@@ -307,9 +295,7 @@ class FakeWebRtcVideoEngine
           overuse_observer_(NULL) {
       ssrcs_[0] = 0;  // default ssrc.
       memset(&send_codec, 0, sizeof(send_codec));
-#ifdef USE_WEBRTC_DEV_BRANCH
       memset(&overuse_options_, 0, sizeof(overuse_options_));
-#endif
     }
     int capture_id_;
     int original_channel_id_;
@@ -349,9 +335,7 @@ class FakeWebRtcVideoEngine
     unsigned int reserved_transmit_bitrate_bps_;
     bool suspend_below_min_bitrate_;
     webrtc::CpuOveruseObserver* overuse_observer_;
-#ifdef USE_WEBRTC_DEV_BRANCH
     webrtc::CpuOveruseOptions overuse_options_;
-#endif
   };
   class Capturer : public webrtc::ViEExternalCapture {
    public:
@@ -499,21 +483,24 @@ class FakeWebRtcVideoEngine
     WEBRTC_ASSERT_CHANNEL(channel);
     return channels_.find(channel)->second->remb_contribute_;
   }
-  int GetSendRtpTimestampOffsetExtensionId(int channel) {
+  int GetSendRtpExtensionId(int channel, const std::string& extension) {
     WEBRTC_ASSERT_CHANNEL(channel);
-    return channels_.find(channel)->second->rtp_offset_send_id_;
+    if (extension == kRtpTimestampOffsetHeaderExtension) {
+      return channels_.find(channel)->second->rtp_offset_send_id_;
+    } else if (extension == kRtpAbsoluteSenderTimeHeaderExtension) {
+      return channels_.find(channel)->second->rtp_absolute_send_time_send_id_;
+    }
+    return -1;
   }
-  int GetReceiveRtpTimestampOffsetExtensionId(int channel) {
+  int GetReceiveRtpExtensionId(int channel, const std::string& extension) {
     WEBRTC_ASSERT_CHANNEL(channel);
-    return channels_.find(channel)->second->rtp_offset_receive_id_;
-  }
-  int GetSendAbsoluteSendTimeExtensionId(int channel) {
-    WEBRTC_ASSERT_CHANNEL(channel);
-    return channels_.find(channel)->second->rtp_absolute_send_time_send_id_;
-  }
-  int GetReceiveAbsoluteSendTimeExtensionId(int channel) {
-    WEBRTC_ASSERT_CHANNEL(channel);
-    return channels_.find(channel)->second->rtp_absolute_send_time_receive_id_;
+    if (extension == kRtpTimestampOffsetHeaderExtension) {
+      return channels_.find(channel)->second->rtp_offset_receive_id_;
+    } else if (extension == kRtpAbsoluteSenderTimeHeaderExtension) {
+      return
+          channels_.find(channel)->second->rtp_absolute_send_time_receive_id_;
+    }
+    return -1;
   }
   bool GetTransmissionSmoothingStatus(int channel) {
     WEBRTC_ASSERT_CHANNEL(channel);
@@ -553,12 +540,10 @@ class FakeWebRtcVideoEngine
     WEBRTC_ASSERT_CHANNEL(channel);
     return channels_.find(channel)->second->overuse_observer_;
   }
-#ifdef USE_WEBRTC_DEV_BRANCH
   webrtc::CpuOveruseOptions GetCpuOveruseOptions(int channel) const {
     WEBRTC_ASSERT_CHANNEL(channel);
     return channels_.find(channel)->second->overuse_options_;
   }
-#endif
   int GetRtxSsrc(int channel, int simulcast_idx) const {
     WEBRTC_ASSERT_CHANNEL(channel);
     if (channels_.find(channel)->second->rtx_ssrcs_.find(simulcast_idx) ==
@@ -570,16 +555,7 @@ class FakeWebRtcVideoEngine
   bool ReceiveCodecRegistered(int channel,
                               const webrtc::VideoCodec& codec) const {
     WEBRTC_ASSERT_CHANNEL(channel);
-#if !defined(USE_WEBRTC_DEV_BRANCH)
-    const std::vector<webrtc::VideoCodec>& codecs =
-      channels_.find(channel)->second->recv_codecs;
-    return std::find(codecs.begin(), codecs.end(), codec) != codecs.end();
-#else
-    // TODO(mallinath) - Remove this specilization after this change is pushed
-    // to googlecode and operator== from VideoCodecDerived moved inside
-    // VideoCodec.
     return true;
-#endif
   };
   bool ExternalDecoderRegistered(int channel,
                                  unsigned int pl_type) const {
@@ -620,12 +596,13 @@ class FakeWebRtcVideoEngine
   }
   void SetSendBandwidthEstimate(int channel, unsigned int send_bandwidth) {
     WEBRTC_ASSERT_CHANNEL(channel);
-    channels_[channel]->send_bandwidth_ = send_bandwidth;
+    channels_[GetOriginalChannelId(channel)]->send_bandwidth_ = send_bandwidth;
   }
   void SetReceiveBandwidthEstimate(int channel,
                                    unsigned int receive_bandwidth) {
     WEBRTC_ASSERT_CHANNEL(channel);
-    channels_[channel]->receive_bandwidth_ = receive_bandwidth;
+    channels_[GetOriginalChannelId(channel)]->receive_bandwidth_ =
+        receive_bandwidth;
   };
   int GetRtxSendPayloadType(int channel) {
     WEBRTC_CHECK_CHANNEL(channel);
@@ -660,7 +637,11 @@ class FakeWebRtcVideoEngine
       return -1;
     }
     Channel* ch = new Channel();
-    channels_[++last_channel_] = ch;
+    ++last_channel_;
+    // The original channel of the first channel in a group refers to itself
+    // for code simplicity.
+    ch->original_channel_id_ = last_channel_;
+    channels_[last_channel_] = ch;
     channel = last_channel_;
     return 0;
   };
@@ -690,14 +671,12 @@ class FakeWebRtcVideoEngine
     return 0;
   }
   WEBRTC_STUB(CpuOveruseMeasures, (int, int*, int*, int*, int*));
-#ifdef USE_WEBRTC_DEV_BRANCH
   WEBRTC_FUNC(SetCpuOveruseOptions,
       (int channel, const webrtc::CpuOveruseOptions& options)) {
     WEBRTC_CHECK_CHANNEL(channel);
     channels_[channel]->overuse_options_ = options;
     return 0;
   }
-#endif
   WEBRTC_STUB(ConnectAudioChannel, (const int, const int));
   WEBRTC_STUB(DisconnectAudioChannel, (const int));
   WEBRTC_FUNC(StartSend, (const int channel)) {
@@ -891,10 +870,8 @@ class FakeWebRtcVideoEngine
   // Not using WEBRTC_STUB due to bool return value
   virtual bool IsIPv6Enabled(int channel) { return true; }
   WEBRTC_STUB(SetMTU, (int, unsigned int));
-#ifdef USE_WEBRTC_DEV_BRANCH
   WEBRTC_STUB(ReceivedBWEPacket, (const int, int64_t, int,
       const webrtc::RTPHeader&));
-#endif
 
   // webrtc::ViERender
   WEBRTC_STUB(RegisterVideoRenderModule, (webrtc::VideoRender&));
@@ -1077,25 +1054,25 @@ class FakeWebRtcVideoEngine
   WEBRTC_FUNC(SetSendTimestampOffsetStatus, (int channel, bool enable,
       int id)) {
     WEBRTC_CHECK_CHANNEL(channel);
-    channels_[channel]->rtp_offset_send_id_ = (enable) ? id : 0;
+    channels_[channel]->rtp_offset_send_id_ = (enable) ? id : -1;
     return 0;
   }
   WEBRTC_FUNC(SetReceiveTimestampOffsetStatus, (int channel, bool enable,
       int id)) {
     WEBRTC_CHECK_CHANNEL(channel);
-    channels_[channel]->rtp_offset_receive_id_ = (enable) ? id : 0;
+    channels_[channel]->rtp_offset_receive_id_ = (enable) ? id : -1;
     return 0;
   }
   WEBRTC_FUNC(SetSendAbsoluteSendTimeStatus, (int channel, bool enable,
       int id)) {
     WEBRTC_CHECK_CHANNEL(channel);
-    channels_[channel]->rtp_absolute_send_time_send_id_ = (enable) ? id : 0;
+    channels_[channel]->rtp_absolute_send_time_send_id_ = (enable) ? id : -1;
     return 0;
   }
   WEBRTC_FUNC(SetReceiveAbsoluteSendTimeStatus, (int channel, bool enable,
       int id)) {
     WEBRTC_CHECK_CHANNEL(channel);
-    channels_[channel]->rtp_absolute_send_time_receive_id_ = (enable) ? id : 0;
+    channels_[channel]->rtp_absolute_send_time_receive_id_ = (enable) ? id : -1;
     return 0;
   }
   WEBRTC_STUB(SetRtcpXrRrtrStatus, (int, bool));
@@ -1104,19 +1081,15 @@ class FakeWebRtcVideoEngine
     channels_[channel]->transmission_smoothing_ = enable;
     return 0;
   }
-#ifdef USE_WEBRTC_DEV_BRANCH
-  WEBRTC_FUNC(SetReservedTransmitBitrate, (int channel,
+  WEBRTC_FUNC(SetReservedTransmitBitrate, (int channel, 
       unsigned int reserved_transmit_bitrate_bps)) {
     WEBRTC_CHECK_CHANNEL(channel);
     channels_[channel]->reserved_transmit_bitrate_bps_ =
         reserved_transmit_bitrate_bps;
     return 0;
   }
-#endif
-#ifdef USE_WEBRTC_DEV_BRANCH
   WEBRTC_STUB_CONST(GetRtcpPacketTypeCounters, (int,
       webrtc::RtcpPacketTypeCounter*, webrtc::RtcpPacketTypeCounter*));
-#endif
   WEBRTC_STUB_CONST(GetReceivedRTCPStatistics, (const int, unsigned short&,
       unsigned int&, unsigned int&, unsigned int&, int&));
   WEBRTC_STUB_CONST(GetSentRTCPStatistics, (const int, unsigned short&,
@@ -1153,6 +1126,7 @@ class FakeWebRtcVideoEngine
     std::map<int, Channel*>::const_iterator it = channels_.find(channel);
     // Assume the current video, fec and nack bitrate sums up to our estimate.
     if (it->second->send) {
+      it = channels_.find(GetOriginalChannelId(channel));
       *send_bandwidth_estimate = it->second->send_bandwidth_;
     } else {
       *send_bandwidth_estimate = 0;
@@ -1164,7 +1138,7 @@ class FakeWebRtcVideoEngine
     WEBRTC_CHECK_CHANNEL(channel);
     std::map<int, Channel*>::const_iterator it = channels_.find(channel);
     if (it->second->receive_) {
-    // For simplicity, assume all channels receive half of max send rate.
+      it = channels_.find(GetOriginalChannelId(channel));
       *receive_bandwidth_estimate = it->second->receive_bandwidth_;
     } else {
       *receive_bandwidth_estimate = 0;
