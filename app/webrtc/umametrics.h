@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2013, Google Inc.
+ * Copyright 2014, Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,35 +25,35 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#import <Foundation/Foundation.h>
+// This file contains enums related to IPv4/IPv6 metrics.
 
-#import "RTCDataChannel.h"
-#import "RTCPeerConnectionDelegate.h"
+#ifndef TALK_APP_WEBRTC_UMAMETRICS_H_
+#define TALK_APP_WEBRTC_UMAMETRICS_H_
 
-// Observer of PeerConnection events, used by RTCPeerConnectionTest to check
-// expectations.
-@interface RTCPeerConnectionSyncObserver
-    : NSObject<RTCPeerConnectionDelegate, RTCDataChannelDelegate>
-@property(nonatomic) RTCDataChannel* dataChannel;
-// TODO(hughv): Add support for RTCVideoRendererDelegate when Video is enabled.
+namespace webrtc {
 
-// Transfer received ICE candidates to the caller.
-- (NSArray*)releaseReceivedICECandidates;
+// Currently this contains information related to WebRTC network/transport
+// information.
 
-// Register expectations for events that this observer should see before it can
-// be considered satisfied (see below).
-- (void)expectError;
-- (void)expectSignalingChange:(RTCSignalingState)state;
-- (void)expectAddStream:(NSString *)label;
-- (void)expectRemoveStream:(NSString *)label;
-- (void)expectICECandidates:(int)count;
-- (void)expectICEConnectionChange:(RTCICEConnectionState)state;
-- (void)expectICEGatheringChange:(RTCICEGatheringState)state;
-- (void)expectDataChannel:(NSString*)label;
-- (void)expectStateChange:(RTCDataChannelState)state;
-- (void)expectMessage:(NSData*)message isBinary:(BOOL)isBinary;
+// This enum is backed by Chromium's histograms.xml,
+// chromium/src/tools/metrics/histograms/histograms.xml
+// Existing values cannot be re-ordered and new enums must be added
+// before kBoundary.
+enum UMAMetricsCounter {
+  kPeerConnection_IPv4,
+  kPeerConnection_IPv6,
+  kBestConnections_IPv4,
+  kBestConnections_IPv6,
+  kBoundary,
+};
 
-// Wait until all registered expectations above have been observed.
-- (void)waitForAllExpectationsToBeSatisfied;
+// This enum defines types for UMA samples, which will have a range.
+enum UMAMetricsName {
+  kNetworkInterfaces_IPv4,
+  kNetworkInterfaces_IPv6,
+  kTimeToConnect,  // In milliseconds.
+};
 
-@end
+}  // namespace webrtc
+
+#endif  // TALK_APP_WEBRTC_UMA6METRICS_H_
