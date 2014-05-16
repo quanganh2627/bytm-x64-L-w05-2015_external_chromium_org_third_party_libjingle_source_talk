@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2014, Google Inc.
+ * Copyright 2004 Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,35 +25,20 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// This file contains enums related to IPv4/IPv6 metrics.
+#ifndef TALK_MEDIA_WEBRTC_WEBRTCVIDEOCHANNEL_H_
+#define TALK_MEDIA_WEBRTC_WEBRTCVIDEOCHANNEL_H_
 
-#ifndef TALK_APP_WEBRTC_UMAMETRICS_H_
-#define TALK_APP_WEBRTC_UMAMETRICS_H_
+namespace cricket {
+class VoiceMediaChannel;
+class WebRtcVideoEngine2;
+class WebRtcVideoChannel2;
 
-namespace webrtc {
-
-// Currently this contains information related to WebRTC network/transport
-// information.
-
-// This enum is backed by Chromium's histograms.xml,
-// chromium/src/tools/metrics/histograms/histograms.xml
-// Existing values cannot be re-ordered and new enums must be added
-// before kBoundary.
-enum PeerConnectionUMAMetricsCounter {
-  kPeerConnection_IPv4,
-  kPeerConnection_IPv6,
-  kBestConnections_IPv4,
-  kBestConnections_IPv6,
-  kBoundary,
+class WebRtcVideoChannelFactory {
+ public:
+  virtual ~WebRtcVideoChannelFactory() {}
+  virtual WebRtcVideoChannel2* Create(WebRtcVideoEngine2* engine,
+                                      VoiceMediaChannel* voice_channel) = 0;
 };
+}  // namespace cricket
 
-// This enum defines types for UMA samples, which will have a range.
-enum PeerConnectionUMAMetricsName {
-  kNetworkInterfaces_IPv4,   // Number of IPv4 interfaces.
-  kNetworkInterfaces_IPv6,   // Number of IPv6 interfaces.
-  kTimeToConnect,  // In milliseconds.
-};
-
-}  // namespace webrtc
-
-#endif  // TALK_APP_WEBRTC_UMA6METRICS_H_
+#endif  // TALK_MEDIA_WEBRTC_WEBRTCVIDEOCHANNEL_H_
