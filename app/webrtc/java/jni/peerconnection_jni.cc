@@ -1892,11 +1892,14 @@ JOW(jlong, PeerConnectionFactory_nativeCreateObserver)(
 
 #ifdef ANDROID
 JOW(jboolean, PeerConnectionFactory_initializeAndroidGlobals)(
-    JNIEnv* jni, jclass, jobject context) {
+    JNIEnv* jni, jclass, jobject context,
+    jboolean initialize_audio, jboolean initialize_video) {
   CHECK(g_jvm, "JNI_OnLoad failed to run?");
   bool failure = false;
-  failure |= webrtc::VideoEngine::SetAndroidObjects(g_jvm);
-  failure |= webrtc::VoiceEngine::SetAndroidObjects(g_jvm, jni, context);
+  if (initialize_video)
+    failure |= webrtc::VideoEngine::SetAndroidObjects(g_jvm);
+  if (initialize_audio)
+    failure |= webrtc::VoiceEngine::SetAndroidObjects(g_jvm, jni, context);
   return !failure;
 }
 #endif  // ANDROID
@@ -1928,6 +1931,12 @@ class OwnedFactoryAndThreads {
 
 JOW(jlong, PeerConnectionFactory_nativeCreatePeerConnectionFactory)(
     JNIEnv* jni, jclass) {
+  // talk/ assumes pretty widely that the current Thread is ThreadManager'd, but
+  // ThreadManager only WrapCurrentThread()s the thread where it is first
+  // created.  Since the semantics around when auto-wrapping happens in
+  // talk/base/ are convoluted, we simply wrap here to avoid having to think
+  // about ramifications of auto-wrapping there.
+  talk_base::ThreadManager::Instance()->WrapCurrentThread();
   webrtc::Trace::CreateTrace();
   Thread* worker_thread = new Thread();
   worker_thread->SetName("worker_thread", NULL);

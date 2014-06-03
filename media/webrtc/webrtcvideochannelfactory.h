@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2013, Google Inc.
+ * Copyright 2004 Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,22 +25,20 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#import <UIKit/UIKit.h>
+#ifndef TALK_MEDIA_WEBRTC_WEBRTCVIDEOCHANNEL_H_
+#define TALK_MEDIA_WEBRTC_WEBRTCVIDEOCHANNEL_H_
 
-@class RTCEAGLVideoView;
+namespace cricket {
+class VoiceMediaChannel;
+class WebRtcVideoEngine2;
+class WebRtcVideoChannel2;
 
-// The view controller that is displayed when AppRTCDemo is loaded.
-@interface APPRTCViewController : UIViewController<UITextFieldDelegate>
+class WebRtcVideoChannelFactory {
+ public:
+  virtual ~WebRtcVideoChannelFactory() {}
+  virtual WebRtcVideoChannel2* Create(WebRtcVideoEngine2* engine,
+                                      VoiceMediaChannel* voice_channel) = 0;
+};
+}  // namespace cricket
 
-@property(weak, nonatomic) IBOutlet UITextField* roomInput;
-@property(weak, nonatomic) IBOutlet UITextView* instructionsView;
-@property(weak, nonatomic) IBOutlet UITextView* logView;
-@property(weak, nonatomic) IBOutlet UIView* blackView;
-
-@property(nonatomic, strong) RTCEAGLVideoView* localVideoView;
-@property(nonatomic, strong) RTCEAGLVideoView* remoteVideoView;
-
-- (void)displayText:(NSString*)text;
-- (void)resetUI;
-
-@end
+#endif  // TALK_MEDIA_WEBRTC_WEBRTCVIDEOCHANNEL_H_
