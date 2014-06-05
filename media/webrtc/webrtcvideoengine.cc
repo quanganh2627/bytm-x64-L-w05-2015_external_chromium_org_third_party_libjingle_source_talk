@@ -62,6 +62,9 @@
 #include "talk/media/webrtc/webrtcvoiceengine.h"
 #include "webrtc/experiments.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/remote_bitrate_estimator.h"
+#ifdef WEBRTC_CHROMIUM_BUILD
+#include "webrtc/system_wrappers/interface/field_trial.h"
+#endif
 
 #if !defined(LIBPEERCONNECTION_LIB)
 #include "talk/media/webrtc/webrtcmediaengine.h"
@@ -71,13 +74,30 @@ cricket::MediaEngineInterface* CreateWebRtcMediaEngine(
     webrtc::AudioDeviceModule* adm, webrtc::AudioDeviceModule* adm_sc,
     cricket::WebRtcVideoEncoderFactory* encoder_factory,
     cricket::WebRtcVideoDecoderFactory* decoder_factory) {
-  return new cricket::WebRtcMediaEngine(adm, adm_sc, encoder_factory,
-                                        decoder_factory);
+#ifdef WEBRTC_CHROMIUM_BUILD
+  if (webrtc::field_trial::FindFullName("WebRTC-NewVideoAPI") == "Enabled") {
+    return new cricket::WebRtcMediaEngine2(
+        adm, adm_sc, encoder_factory, decoder_factory);
+  } else {
+#endif
+    return new cricket::WebRtcMediaEngine(
+        adm, adm_sc, encoder_factory, decoder_factory);
+#ifdef WEBRTC_CHROMIUM_BUILD
+  }
+#endif
 }
 
 WRME_EXPORT
 void DestroyWebRtcMediaEngine(cricket::MediaEngineInterface* media_engine) {
-  delete static_cast<cricket::WebRtcMediaEngine*>(media_engine);
+#ifdef WEBRTC_CHROMIUM_BUILD
+  if (webrtc::field_trial::FindFullName("WebRTC-NewVideoAPI") == "Enabled") {
+    delete static_cast<cricket::WebRtcMediaEngine2*>(media_engine);
+  } else {
+#endif
+    delete static_cast<cricket::WebRtcMediaEngine*>(media_engine);
+#ifdef WEBRTC_CHROMIUM_BUILD
+  }
+#endif
 }
 #endif
 
@@ -104,7 +124,6 @@ static const char kFecPayloadName[] = "ulpfec";
 
 static const int kDefaultNumberOfTemporalLayers = 1;  // 1:1
 
-static const int kMaxExternalVideoCodecs = 8;
 static const int kExternalVideoPayloadTypeBase = 120;
 
 static bool BitrateIsSet(int value) {
@@ -117,7 +136,10 @@ static int GetBitrate(int value, int deflt) {
 
 // Static allocation of payload type values for external video codec.
 static int GetExternalVideoPayloadType(int index) {
+#if ENABLE_DEBUG
+  static const int kMaxExternalVideoCodecs = 8;
   ASSERT(index >= 0 && index < kMaxExternalVideoCodecs);
+#endif
   return kExternalVideoPayloadTypeBase + index;
 }
 
@@ -2494,6 +2516,15 @@ bool WebRtcVideoMediaChannel::GetStats(const StatsOptions& options,
             send_codec_->maxBitrate, kMaxVideoBitrate);
       }
       sinfo.adapt_reason = send_channel->CurrentAdaptReason();
+
+#ifdef USE_WEBRTC_DEV_BRANCH
+      webrtc::CpuOveruseMetrics metrics;
+      engine()->vie()->base()->GetCpuOveruseMetrics(channel_id, &metrics);
+      sinfo.capture_jitter_ms = metrics.capture_jitter_ms;
+      sinfo.avg_encode_ms = metrics.avg_encode_time_ms;
+      sinfo.encode_usage_percent = metrics.encode_usage_percent;
+      sinfo.capture_queue_delay_ms_per_s = metrics.capture_queue_delay_ms_per_s;
+#else
       sinfo.capture_jitter_ms = -1;
       sinfo.avg_encode_ms = -1;
       sinfo.encode_usage_percent = -1;
@@ -2514,6 +2545,7 @@ bool WebRtcVideoMediaChannel::GetStats(const StatsOptions& options,
         sinfo.encode_usage_percent = encode_usage_percent;
         sinfo.capture_queue_delay_ms_per_s = capture_queue_delay_ms_per_s;
       }
+#endif
 
       webrtc::RtcpPacketTypeCounter rtcp_sent;
       webrtc::RtcpPacketTypeCounter rtcp_received;

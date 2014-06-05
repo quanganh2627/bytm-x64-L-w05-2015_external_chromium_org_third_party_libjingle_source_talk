@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2013, Google Inc.
+ * Copyright 2014 Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,22 +25,5 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#import <UIKit/UIKit.h>
-
-@class RTCEAGLVideoView;
-
-// The view controller that is displayed when AppRTCDemo is loaded.
-@interface APPRTCViewController : UIViewController<UITextFieldDelegate>
-
-@property(weak, nonatomic) IBOutlet UITextField* roomInput;
-@property(weak, nonatomic) IBOutlet UITextView* instructionsView;
-@property(weak, nonatomic) IBOutlet UITextView* logView;
-@property(weak, nonatomic) IBOutlet UIView* blackView;
-
-@property(nonatomic, strong) RTCEAGLVideoView* localVideoView;
-@property(nonatomic, strong) RTCEAGLVideoView* remoteVideoView;
-
-- (void)displayText:(NSString*)text;
-- (void)resetUI;
-
-@end
+// TODO(pbos): Move CreateWebRtcMediaEngine here as soon as
+//             libjingle/libjingle.gyp in Chromium builds this file.
