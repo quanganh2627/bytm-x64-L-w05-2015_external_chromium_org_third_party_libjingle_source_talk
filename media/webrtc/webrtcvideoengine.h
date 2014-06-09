@@ -336,6 +336,11 @@ class WebRtcVideoMediaChannel : public talk_base::MessageHandler,
   bool ConfigureSending(int channel_id, uint32 local_ssrc_key);
   bool SetNackFec(int channel_id, int red_payload_type, int fec_payload_type,
                   bool nack_enabled);
+  bool SetHybridNackFecStatus(int channel_id, bool enabled,
+                              int red_payload_type, int fec_payload_type);
+  bool SetFecStatus(int channel_id, bool enabled,
+                    int red_payload_type, int fec_payload_type);
+  bool SetNackStatus(int channel_id, bool enabled);
   bool SetSendCodec(const webrtc::VideoCodec& codec);
   bool SetSendCodec(WebRtcVideoChannelSendInfo* send_channel,
                     const webrtc::VideoCodec& codec);
@@ -345,6 +350,7 @@ class WebRtcVideoMediaChannel : public talk_base::MessageHandler,
   bool SetReceiveCodecs(WebRtcVideoChannelRecvInfo* info);
   // Returns the channel number that receives the stream with SSRC |ssrc|.
   int GetRecvChannelNum(uint32 ssrc);
+  bool MaybeSetRtxSsrc(const StreamParams& sp, int channel_id);
   // Given captured video frame size, checks if we need to reset vie send codec.
   // |reset| is set to whether resetting has happened on vie or not.
   // Returns false on error.

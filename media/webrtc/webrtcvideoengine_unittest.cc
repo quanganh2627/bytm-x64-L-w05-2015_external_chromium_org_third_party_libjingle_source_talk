@@ -74,7 +74,7 @@ static const unsigned int kMaxBandwidthKbps = 2000;
 static const uint32 kSsrcs1[] = {1};
 static const uint32 kSsrcs2[] = {1, 2};
 static const uint32 kSsrcs3[] = {1, 2, 3};
-static const uint32 kRtxSsrc1[] = {4};
+static const uint32 kRtxSsrcs1[] = {4};
 static const uint32 kRtxSsrcs3[] = {4, 5, 6};
 
 
@@ -384,6 +384,7 @@ TEST_F(WebRtcVideoEngineTestFake, SetSendCodecs) {
   VerifyVP8SendCodec(channel_num, kVP8Codec.width, kVP8Codec.height);
   EXPECT_TRUE(vie_.GetHybridNackFecStatus(channel_num));
   EXPECT_FALSE(vie_.GetNackStatus(channel_num));
+  EXPECT_FALSE(vie_.GetFecStatus(channel_num));
   EXPECT_EQ(1, vie_.GetNumSetSendCodecs());
   // TODO(juberti): Check RTCP, PLI, TMMBR.
 }
@@ -749,8 +750,44 @@ TEST_F(WebRtcVideoEngineTestFake, SetRecvCodecsWithRtx) {
   EXPECT_EQ(rtx_codec.id, vie_.GetRtxRecvPayloadType(channel_num));
 }
 
+// Test that RTX packets are routed to the default video channel if
+// there's only one recv stream.
+TEST_F(WebRtcVideoEngineTestFake, TestReceiveRtxOneStream) {
+  EXPECT_TRUE(SetupEngine());
+
+  // Setup one channel with an associated RTX stream.
+  cricket::StreamParams params =
+    cricket::StreamParams::CreateLegacy(kSsrcs1[0]);
+  params.AddFidSsrc(kSsrcs1[0], kRtxSsrcs1[0]);
+  EXPECT_TRUE(channel_->AddRecvStream(params));
+  int channel_num = vie_.GetLastChannel();
+  EXPECT_EQ(static_cast<int>(kRtxSsrcs1[0]),
+            vie_.GetRemoteRtxSsrc(channel_num));
+
+  // Register codecs.
+  std::vector<cricket::VideoCodec> codec_list;
+  codec_list.push_back(kVP8Codec720p);
+  cricket::VideoCodec rtx_codec(96, "rtx", 0, 0, 0, 0);
+  rtx_codec.SetParam("apt", kVP8Codec.id);
+  codec_list.push_back(rtx_codec);
+  EXPECT_TRUE(channel_->SetRecvCodecs(codec_list));
+
+  // Construct a fake RTX packet and verify that it is passed to the
+  // right WebRTC channel.
+  const size_t kDataLength = 12;
+  uint8_t data[kDataLength];
+  memset(data, 0, sizeof(data));
+  data[0] = 0x80;
+  data[1] = rtx_codec.id;
+  talk_base::SetBE32(&data[8], kRtxSsrcs1[0]);
+  talk_base::Buffer packet(data, kDataLength);
+  talk_base::PacketTime packet_time;
+  channel_->OnPacketReceived(&packet, packet_time);
+  EXPECT_EQ(rtx_codec.id, vie_.GetLastRecvdPayloadType(channel_num));
+}
+
 // Test that RTX packets are routed to the correct video channel.
-TEST_F(WebRtcVideoEngineTestFake, TestReceiveRtx) {
+TEST_F(WebRtcVideoEngineTestFake, TestReceiveRtxThreeStreams) {
   EXPECT_TRUE(SetupEngine());
 
   // Setup three channels with associated RTX streams.
@@ -880,7 +917,7 @@ TEST_F(WebRtcVideoEngineTestFake, RecvStreamWithRtx) {
   EXPECT_TRUE(channel_->AddRecvStream(
       cricket::CreateSimWithRtxStreamParams("cname",
                                             MAKE_VECTOR(kSsrcs1),
-                                            MAKE_VECTOR(kRtxSsrc1))));
+                                            MAKE_VECTOR(kRtxSsrcs1))));
   int new_channel_num = vie_.GetLastChannel();
   EXPECT_NE(default_channel, new_channel_num);
   EXPECT_EQ(4, vie_.GetRemoteRtxSsrc(new_channel_num));
@@ -1225,6 +1262,51 @@ TEST_F(WebRtcVideoEngineTestFake, NackEnabled) {
   codecs.resize(1);  // toss out red and ulpfec
   EXPECT_TRUE(channel_->SetSendCodecs(codecs));
   EXPECT_TRUE(vie_.GetNackStatus(channel_num));
+  EXPECT_FALSE(vie_.GetHybridNackFecStatus(channel_num));
+  EXPECT_FALSE(vie_.GetFecStatus(channel_num));
+}
+
+// Test that FEC is enabled and NACK is disabled if we offer
+// RED/FEC and we disable nack.
+TEST_F(WebRtcVideoEngineTestFake, FecEnabled) {
+  EXPECT_TRUE(SetupEngine());
+  int channel_num = vie_.GetLastChannel();
+  std::vector<cricket::VideoCodec> codecs = engine_.codecs();
+  // Clearing the codecs' FeedbackParams and setting send codecs should disable
+  // NACK.
+  for (std::vector<cricket::VideoCodec>::iterator iter = codecs.begin();
+       iter != codecs.end(); ++iter) {
+    // Intersecting with empty will clear the FeedbackParams.
+    cricket::FeedbackParams empty_params;
+    iter->feedback_params.Intersect(empty_params);
+    EXPECT_TRUE(iter->feedback_params.params().empty());
+  }
+  EXPECT_TRUE(channel_->SetSendCodecs(codecs));
+  EXPECT_TRUE(vie_.GetFecStatus(channel_num));
+  EXPECT_FALSE(vie_.GetHybridNackFecStatus(channel_num));
+  EXPECT_FALSE(vie_.GetNackStatus(channel_num));
+}
+
+// Test that FEC and NACK are disabled if we don't offer
+// RED/FEC and we disable nack.
+TEST_F(WebRtcVideoEngineTestFake, NackFecDisabled) {
+  EXPECT_TRUE(SetupEngine());
+  int channel_num = vie_.GetLastChannel();
+  std::vector<cricket::VideoCodec> codecs = engine_.codecs();
+  codecs.resize(1);  // toss out red and ulpfec
+  // Clearing the codecs' FeedbackParams and setting send codecs should disable
+  // NACK.
+  for (std::vector<cricket::VideoCodec>::iterator iter = codecs.begin();
+       iter != codecs.end(); ++iter) {
+    // Intersecting with empty will clear the FeedbackParams.
+    cricket::FeedbackParams empty_params;
+    iter->feedback_params.Intersect(empty_params);
+    EXPECT_TRUE(iter->feedback_params.params().empty());
+  }
+  EXPECT_TRUE(channel_->SetSendCodecs(codecs));
+  EXPECT_FALSE(vie_.GetFecStatus(channel_num));
+  EXPECT_FALSE(vie_.GetHybridNackFecStatus(channel_num));
+  EXPECT_FALSE(vie_.GetNackStatus(channel_num));
 }
 
 // Test that we enable hybrid NACK FEC mode.
@@ -1235,6 +1317,7 @@ TEST_F(WebRtcVideoEngineTestFake, HybridNackFec) {
   EXPECT_TRUE(channel_->SetSendCodecs(engine_.codecs()));
   EXPECT_TRUE(vie_.GetHybridNackFecStatus(channel_num));
   EXPECT_FALSE(vie_.GetNackStatus(channel_num));
+  EXPECT_FALSE(vie_.GetFecStatus(channel_num));
 }
 
 // Test that we enable hybrid NACK FEC mode when calling SetSendCodecs and
@@ -1246,6 +1329,7 @@ TEST_F(WebRtcVideoEngineTestFake, HybridNackFecReversedOrder) {
   EXPECT_TRUE(channel_->SetRecvCodecs(engine_.codecs()));
   EXPECT_TRUE(vie_.GetHybridNackFecStatus(channel_num));
   EXPECT_FALSE(vie_.GetNackStatus(channel_num));
+  EXPECT_FALSE(vie_.GetFecStatus(channel_num));
 }
 
 // Test NACK vs Hybrid NACK/FEC interop call setup, i.e. only use NACK even if
@@ -1261,6 +1345,7 @@ TEST_F(WebRtcVideoEngineTestFake, VideoProtectionInterop) {
   EXPECT_TRUE(channel_->SetSendCodecs(send_codecs));
   EXPECT_FALSE(vie_.GetHybridNackFecStatus(channel_num));
   EXPECT_TRUE(vie_.GetNackStatus(channel_num));
+  EXPECT_FALSE(vie_.GetFecStatus(channel_num));
 }
 
 // Test NACK vs Hybrid NACK/FEC interop call setup, i.e. only use NACK even if
@@ -1277,6 +1362,7 @@ TEST_F(WebRtcVideoEngineTestFake, VideoProtectionInteropReversed) {
   EXPECT_TRUE(channel_->SetRecvCodecs(recv_codecs));
   EXPECT_FALSE(vie_.GetHybridNackFecStatus(channel_num));
   EXPECT_TRUE(vie_.GetNackStatus(channel_num));
+  EXPECT_FALSE(vie_.GetFecStatus(channel_num));
 }
 
 // Test that NACK, not hybrid mode, is enabled in conference mode.
@@ -1291,11 +1377,13 @@ TEST_F(WebRtcVideoEngineTestFake, HybridNackFecConference) {
   EXPECT_TRUE(channel_->SetSendCodecs(engine_.codecs()));
   EXPECT_FALSE(vie_.GetHybridNackFecStatus(send_channel_num));
   EXPECT_TRUE(vie_.GetNackStatus(send_channel_num));
+  EXPECT_FALSE(vie_.GetFecStatus(send_channel_num));
   // Add a receive stream.
   EXPECT_TRUE(channel_->AddRecvStream(cricket::StreamParams::CreateLegacy(1)));
   int receive_channel_num = vie_.GetLastChannel();
   EXPECT_FALSE(vie_.GetHybridNackFecStatus(receive_channel_num));
   EXPECT_TRUE(vie_.GetNackStatus(receive_channel_num));
+  EXPECT_FALSE(vie_.GetFecStatus(receive_channel_num));
 }
 
 // Test that when AddRecvStream in conference mode, a new channel is created
