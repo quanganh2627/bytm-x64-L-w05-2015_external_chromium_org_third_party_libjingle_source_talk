@@ -25,7 +25,7 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#import <UIKit/UIKit.h>
+#import <Foundation/Foundation.h>
 
 // These methods will be called by the AppEngine chanel.  The documentation
 // for these methods is found here.  (Yes, it is a JS API.)
@@ -35,15 +35,15 @@
 - (void)onOpen;
 - (void)onMessage:(NSDictionary*)data;
 - (void)onClose;
-- (void)onError:(int)code withDescription:(NSString *)description;
+- (void)onError:(int)code withDescription:(NSString*)description;
 
 @end
 
 // Initialize with a token for an AppRTC data channel.  This will load
 // ios_channel.html and use the token to establish a data channel between the
 // application and AppEngine.
-@interface GAEChannelClient : NSObject<UIWebViewDelegate>
+@interface GAEChannelClient : NSObject
 
-- (id)initWithToken:(NSString *)token delegate:(id<GAEMessageHandler>)delegate;
+- (id)initWithToken:(NSString*)token delegate:(id<GAEMessageHandler>)delegate;
 
 @end

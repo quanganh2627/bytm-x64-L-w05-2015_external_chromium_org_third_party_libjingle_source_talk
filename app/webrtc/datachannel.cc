@@ -164,17 +164,23 @@ bool DataChannel::Send(const DataBuffer& buffer) {
   // If the queue is non-empty, we're waiting for SignalReadyToSend,
   // so just add to the end of the queue and keep waiting.
   if (!queued_send_data_.empty()) {
-    return QueueSendData(buffer);
+    if (!QueueSendData(buffer)) {
+      if (data_channel_type_ == cricket::DCT_RTP) {
+        return false;
+      }
+      Close();
+    }
+    return true;
   }
 
   cricket::SendDataResult send_result;
   if (!InternalSendWithoutQueueing(buffer, &send_result)) {
-    if (send_result == cricket::SDR_BLOCK) {
-      return QueueSendData(buffer);
+    if (data_channel_type_ == cricket::DCT_RTP) {
+      return false;
     }
-    // Fail for other results.
-    // TODO(jiayl): We should close the data channel in this case.
-    return false;
+    if (send_result != cricket::SDR_BLOCK || !QueueSendData(buffer)) {
+      Close();
+    }
   }
   return true;
 }
@@ -284,10 +290,6 @@ void DataChannel::OnDataEngineClose() {
 void DataChannel::OnDataReceived(cricket::DataChannel* channel,
                                  const cricket::ReceiveDataParams& params,
                                  const talk_base::Buffer& payload) {
-  if (state_ != kOpen) {
-    return;
-  }
-
   uint32 expected_ssrc =
       (data_channel_type_ == cricket::DCT_RTP) ? receive_ssrc_ : config_.id;
   if (params.ssrc != expected_ssrc) {
@@ -329,9 +331,8 @@ void DataChannel::OnDataReceived(cricket::DataChannel* channel,
     observer_->OnMessage(*buffer.get());
   } else {
     if (queued_received_data_.size() > kMaxQueuedReceivedDataPackets) {
-      // TODO(jiayl): We should close the data channel in this case.
       LOG(LS_ERROR)
-          << "Queued received data exceeds the max number of packes.";
+          << "Queued received data exceeds the max number of packets.";
       ClearQueuedReceivedData();
     }
     queued_received_data_.push(buffer.release());
@@ -369,6 +370,9 @@ void DataChannel::OnChannelReady(bool writable) {
 }
 
 void DataChannel::DoClose() {
+  if (state_ == kClosed)
+    return;
+
   receive_ssrc_set_ = false;
   send_ssrc_set_ = false;
   SetState(kClosing);
@@ -411,6 +415,9 @@ void DataChannel::UpdateState() {
 }
 
 void DataChannel::SetState(DataState state) {
+  if (state_ == state)
+    return;
+
   state_ = state;
   if (observer_) {
     observer_->OnStateChange();
@@ -526,8 +533,8 @@ bool DataChannel::InternalSendWithoutQueueing(
 }
 
 bool DataChannel::QueueSendData(const DataBuffer& buffer) {
-  if (queued_send_data_.size() > kMaxQueuedSendDataPackets) {
-    LOG(LS_ERROR) << "Can't buffer any more data in the data channel.";
+  if (queued_send_data_.size() >= kMaxQueuedSendDataPackets) {
+    LOG(LS_ERROR) << "Can't buffer any more data for the data channel.";
     return false;
   }
   queued_send_data_.push_back(new DataBuffer(buffer));
