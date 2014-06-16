@@ -62,44 +62,6 @@
 #include "talk/media/webrtc/webrtcvoiceengine.h"
 #include "webrtc/experiments.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/remote_bitrate_estimator.h"
-#ifdef WEBRTC_CHROMIUM_BUILD
-#include "webrtc/system_wrappers/interface/field_trial.h"
-#endif
-
-#if !defined(LIBPEERCONNECTION_LIB)
-#include "talk/media/webrtc/webrtcmediaengine.h"
-
-WRME_EXPORT
-cricket::MediaEngineInterface* CreateWebRtcMediaEngine(
-    webrtc::AudioDeviceModule* adm, webrtc::AudioDeviceModule* adm_sc,
-    cricket::WebRtcVideoEncoderFactory* encoder_factory,
-    cricket::WebRtcVideoDecoderFactory* decoder_factory) {
-#ifdef WEBRTC_CHROMIUM_BUILD
-  if (webrtc::field_trial::FindFullName("WebRTC-NewVideoAPI") == "Enabled") {
-    return new cricket::WebRtcMediaEngine2(
-        adm, adm_sc, encoder_factory, decoder_factory);
-  } else {
-#endif
-    return new cricket::WebRtcMediaEngine(
-        adm, adm_sc, encoder_factory, decoder_factory);
-#ifdef WEBRTC_CHROMIUM_BUILD
-  }
-#endif
-}
-
-WRME_EXPORT
-void DestroyWebRtcMediaEngine(cricket::MediaEngineInterface* media_engine) {
-#ifdef WEBRTC_CHROMIUM_BUILD
-  if (webrtc::field_trial::FindFullName("WebRTC-NewVideoAPI") == "Enabled") {
-    delete static_cast<cricket::WebRtcMediaEngine2*>(media_engine);
-  } else {
-#endif
-    delete static_cast<cricket::WebRtcMediaEngine*>(media_engine);
-#ifdef WEBRTC_CHROMIUM_BUILD
-  }
-#endif
-}
-#endif
 
 
 namespace cricket {
@@ -3065,10 +3027,13 @@ bool WebRtcVideoMediaChannel::SetOptions(const VideoOptions &options) {
 
   if (leaky_bucket_changed) {
     bool enable_leaky_bucket =
-        options_.video_leaky_bucket.GetWithDefaultIfUnset(false);
+        options_.video_leaky_bucket.GetWithDefaultIfUnset(true);
     LOG(LS_INFO) << "Leaky bucket is enabled? " << enable_leaky_bucket;
     for (SendChannelMap::iterator it = send_channels_.begin();
         it != send_channels_.end(); ++it) {
+      // TODO(holmer): This API will be removed as we move to the new
+      // webrtc::Call API. We should clean up this experiment when that is
+      // happening.
       if (engine()->vie()->rtp()->SetTransmissionSmoothingStatus(
           it->second->channel_id(), enable_leaky_bucket) != 0) {
         LOG_RTCERR2(SetTransmissionSmoothingStatus, it->second->channel_id(),
@@ -3611,7 +3576,7 @@ bool WebRtcVideoMediaChannel::ConfigureSending(int channel_id,
     return false;
   }
 
-  if (options_.video_leaky_bucket.GetWithDefaultIfUnset(false)) {
+  if (options_.video_leaky_bucket.GetWithDefaultIfUnset(true)) {
     if (engine()->vie()->rtp()->SetTransmissionSmoothingStatus(channel_id,
                                                                true) != 0) {
       LOG_RTCERR2(SetTransmissionSmoothingStatus, channel_id, true);
@@ -3660,71 +3625,24 @@ bool WebRtcVideoMediaChannel::SetNackFec(int channel_id,
                                          int red_payload_type,
                                          int fec_payload_type,
                                          bool nack_enabled) {
-  bool fec_enabled = (red_payload_type != -1 && fec_payload_type != -1 &&
+  bool enable = (red_payload_type != -1 && fec_payload_type != -1 &&
       !InConferenceMode());
-  bool hybrid_enabled = (fec_enabled && nack_enabled);
-
-  if (!SetHybridNackFecStatus(channel_id, hybrid_enabled,
-                              red_payload_type, fec_payload_type)) {
-    return false;
+  if (enable) {
+    if (engine_->vie()->rtp()->SetHybridNACKFECStatus(
+        channel_id, nack_enabled, red_payload_type, fec_payload_type) != 0) {
+      LOG_RTCERR4(SetHybridNACKFECStatus,
+                  channel_id, nack_enabled, red_payload_type, fec_payload_type);
+      return false;
+    }
+    LOG(LS_INFO) << "Hybrid NACK/FEC enabled for channel " << channel_id;
+  } else {
+    if (engine_->vie()->rtp()->SetNACKStatus(channel_id, nack_enabled) != 0) {
+      LOG_RTCERR1(SetNACKStatus, channel_id);
+      return false;
+    }
+    std::string enabled = nack_enabled ? "enabled" : "disabled";
+    LOG(LS_INFO) << "NACK " << enabled << " for channel " << channel_id;
   }
-  if (hybrid_enabled) {
-    return true;
-  }
-
-  if (!SetFecStatus(channel_id, fec_enabled,
-                    red_payload_type, fec_payload_type)) {
-    return false;
-  }
-  if (fec_enabled) {
-    return true;
-  }
-
-  if (!SetNackStatus(channel_id, nack_enabled)) {
-    return false;
-  }
-
-  return true;
-}
-
-bool WebRtcVideoMediaChannel::SetHybridNackFecStatus(int channel_id,
-                                                     bool enabled,
-                                                     int red_payload_type,
-                                                     int fec_payload_type) {
-  if (engine_->vie()->rtp()->SetHybridNACKFECStatus(
-      channel_id, enabled, red_payload_type, fec_payload_type) != 0) {
-    LOG_RTCERR4(SetHybridNACKFECStatus, channel_id, enabled,
-                red_payload_type, fec_payload_type);
-    return false;
-  }
-  std::string enabled_str = enabled ? "enabled" : "disabled";
-  LOG(LS_INFO) << "Hybrid NACK/FEC " << enabled_str
-               << " for channel " << channel_id;
-  return true;
-}
-
-bool WebRtcVideoMediaChannel::SetFecStatus(int channel_id,
-                                           bool enabled,
-                                           int red_payload_type,
-                                           int fec_payload_type) {
-  if (engine_->vie()->rtp()->SetFECStatus(
-      channel_id, enabled, red_payload_type, fec_payload_type) != 0) {
-    LOG_RTCERR4(SetFECStatus, channel_id, enabled,
-                red_payload_type, fec_payload_type);
-    return false;
-  }
-  std::string enabled_str = enabled ? "enabled" : "disabled";
-  LOG(LS_INFO) << "FEC " << enabled_str << " for channel " << channel_id;
-  return true;
-}
-
-bool WebRtcVideoMediaChannel::SetNackStatus(int channel_id, bool enabled) {
-  if (engine_->vie()->rtp()->SetNACKStatus(channel_id, enabled) != 0) {
-    LOG_RTCERR2(SetNACKStatus, channel_id, enabled);
-    return false;
-  }
-  std::string enabled_str = enabled ? "enabled" : "disabled";
-  LOG(LS_INFO) << "NACK " << enabled_str << " for channel " << channel_id;
   return true;
 }
 
@@ -4050,7 +3968,7 @@ bool WebRtcVideoMediaChannel::MaybeResetVieSendCodec(
       options_.video_noise_reduction.GetWithDefaultIfUnset(false);
   int screencast_min_bitrate =
       options_.screencast_min_bitrate.GetWithDefaultIfUnset(0);
-  bool leaky_bucket = options_.video_leaky_bucket.GetWithDefaultIfUnset(false);
+  bool leaky_bucket = options_.video_leaky_bucket.GetWithDefaultIfUnset(true);
   bool denoising = !is_screencast && enable_denoising;
   bool reset_send_codec =
       target_width != cur_width || target_height != cur_height ||

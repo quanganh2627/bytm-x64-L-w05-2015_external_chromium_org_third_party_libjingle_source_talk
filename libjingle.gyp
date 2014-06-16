@@ -108,6 +108,7 @@
                 # included here, or better yet, build a proper .jar in webrtc
                 # and include it here.
                 'android_java_files': [
+                  'app/webrtc/java/android/org/webrtc/VideoRendererGui.java',
                   'app/webrtc/java/src/org/webrtc/MediaCodecVideoEncoder.java',
                   '<(webrtc_modules_dir)/audio_device/android/java/src/org/webrtc/voiceengine/AudioManagerAndroid.java',
                   '<(webrtc_modules_dir)/video_capture/android/java/src/org/webrtc/videoengine/VideoCaptureAndroid.java',
@@ -701,7 +702,7 @@
             'base/scoped_autorelease_pool.mm',
           ],
           'dependencies': [
-            '../net/third_party/nss/ssl.gyp:libssl',
+            '<(DEPTH)/net/third_party/nss/ssl.gyp:libssl',
           ],
           'all_dependent_settings': {
             'xcode_settings': {
