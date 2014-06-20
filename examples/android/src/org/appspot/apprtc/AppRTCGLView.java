@@ -1,6 +1,6 @@
 /*
  * libjingle
- * Copyright 2014 Google Inc.
+ * Copyright 2014, Google Inc.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -25,34 +25,34 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "talk/media/webrtc/webrtcmediaengine.h"
-#include "webrtc/system_wrappers/interface/field_trial.h"
+package org.appspot.apprtc;
 
-WRME_EXPORT
-cricket::MediaEngineInterface* CreateWebRtcMediaEngine(
-    webrtc::AudioDeviceModule* adm,
-    webrtc::AudioDeviceModule* adm_sc,
-    cricket::WebRtcVideoEncoderFactory* encoder_factory,
-    cricket::WebRtcVideoDecoderFactory* decoder_factory) {
-#ifdef WEBRTC_CHROMIUM_BUILD
-  if (webrtc::field_trial::FindFullName("WebRTC-NewVideoAPI") == "Enabled") {
-    return new cricket::WebRtcMediaEngine2(
-        adm, adm_sc, encoder_factory, decoder_factory);
-  }
-#endif // WEBRTC_CHROMIUM_BUILD
-  return new cricket::WebRtcMediaEngine(
-      adm, adm_sc, encoder_factory, decoder_factory);
-}
+import android.content.Context;
+import android.graphics.Point;
+import android.opengl.GLSurfaceView;
 
-WRME_EXPORT
-void DestroyWebRtcMediaEngine(cricket::MediaEngineInterface* media_engine) {
-#ifdef WEBRTC_CHROMIUM_BUILD
-  if (webrtc::field_trial::FindFullName("WebRTC-NewVideoAPI") == "Enabled") {
-    delete static_cast<cricket::WebRtcMediaEngine2*>(media_engine);
-  } else {
-#endif // WEBRTC_CHROMIUM_BUILD
-    delete static_cast<cricket::WebRtcMediaEngine*>(media_engine);
-#ifdef WEBRTC_CHROMIUM_BUILD
+public class AppRTCGLView extends GLSurfaceView {
+  private Point screenDimensions;
+
+  public AppRTCGLView(Context c, Point screenDimensions) {
+    super(c);
+    this.screenDimensions = screenDimensions;
   }
-#endif // WEBRTC_CHROMIUM_BUILD
+
+  public void updateDisplaySize(Point screenDimensions) {
+    this.screenDimensions = screenDimensions;
+  }
+
+  @Override
+  protected void onMeasure(int unusedX, int unusedY) {
+    // Go big or go home!
+    setMeasuredDimension(screenDimensions.x, screenDimensions.y);
+  }
+
+  @Override
+  protected void onAttachedToWindow() {
+    super.onAttachedToWindow();
+    setSystemUiVisibility(SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+        SYSTEM_UI_FLAG_FULLSCREEN | SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+  }
 }

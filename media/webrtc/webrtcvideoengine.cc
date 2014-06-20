@@ -62,44 +62,6 @@
 #include "talk/media/webrtc/webrtcvoiceengine.h"
 #include "webrtc/experiments.h"
 #include "webrtc/modules/remote_bitrate_estimator/include/remote_bitrate_estimator.h"
-#ifdef WEBRTC_CHROMIUM_BUILD
-#include "webrtc/system_wrappers/interface/field_trial.h"
-#endif
-
-#if !defined(LIBPEERCONNECTION_LIB)
-#include "talk/media/webrtc/webrtcmediaengine.h"
-
-WRME_EXPORT
-cricket::MediaEngineInterface* CreateWebRtcMediaEngine(
-    webrtc::AudioDeviceModule* adm, webrtc::AudioDeviceModule* adm_sc,
-    cricket::WebRtcVideoEncoderFactory* encoder_factory,
-    cricket::WebRtcVideoDecoderFactory* decoder_factory) {
-#ifdef WEBRTC_CHROMIUM_BUILD
-  if (webrtc::field_trial::FindFullName("WebRTC-NewVideoAPI") == "Enabled") {
-    return new cricket::WebRtcMediaEngine2(
-        adm, adm_sc, encoder_factory, decoder_factory);
-  } else {
-#endif
-    return new cricket::WebRtcMediaEngine(
-        adm, adm_sc, encoder_factory, decoder_factory);
-#ifdef WEBRTC_CHROMIUM_BUILD
-  }
-#endif
-}
-
-WRME_EXPORT
-void DestroyWebRtcMediaEngine(cricket::MediaEngineInterface* media_engine) {
-#ifdef WEBRTC_CHROMIUM_BUILD
-  if (webrtc::field_trial::FindFullName("WebRTC-NewVideoAPI") == "Enabled") {
-    delete static_cast<cricket::WebRtcMediaEngine2*>(media_engine);
-  } else {
-#endif
-    delete static_cast<cricket::WebRtcMediaEngine*>(media_engine);
-#ifdef WEBRTC_CHROMIUM_BUILD
-  }
-#endif
-}
-#endif
 
 
 namespace cricket {
@@ -260,11 +222,11 @@ class WebRtcRenderAdapter : public webrtc::ExternalRenderer {
 
     const int kVideoCodecClockratekHz = cricket::kVideoCodecClockrate / 1000;
 
+    int64 elapsed_time_ms =
+        (rtp_ts_wraparound_handler_.Unwrap(rtp_time_stamp) -
+         capture_start_rtp_time_stamp_) / kVideoCodecClockratekHz;
 #ifdef USE_WEBRTC_DEV_BRANCH
     if (ntp_time_ms > 0) {
-      int64 elapsed_time_ms =
-          (rtp_ts_wraparound_handler_.Unwrap(rtp_time_stamp) -
-           capture_start_rtp_time_stamp_) / kVideoCodecClockratekHz;
       capture_start_ntp_time_ms_ = ntp_time_ms - elapsed_time_ms;
     }
 #endif
@@ -272,30 +234,31 @@ class WebRtcRenderAdapter : public webrtc::ExternalRenderer {
     if (renderer_ == NULL) {
       return 0;
     }
-    // Convert 90K rtp timestamp to ns timestamp.
-    int64 rtp_time_stamp_in_ns = (rtp_time_stamp / kVideoCodecClockratekHz) *
-        talk_base::kNumNanosecsPerMillisec;
+    // Convert elapsed_time_ms to ns timestamp.
+    int64 elapsed_time_ns =
+        elapsed_time_ms * talk_base::kNumNanosecsPerMillisec;
     // Convert milisecond render time to ns timestamp.
-    int64 render_time_stamp_in_ns = render_time *
+    int64 render_time_ns = render_time *
         talk_base::kNumNanosecsPerMillisec;
-    // Send the rtp timestamp to renderer as the VideoFrame timestamp.
-    // and the render timestamp as the VideoFrame elapsed_time.
+    // Note that here we send the |elapsed_time_ns| to renderer as the
+    // cricket::VideoFrame's elapsed_time_ and the |render_time_ns| as the
+    // cricket::VideoFrame's time_stamp_.
     if (handle == NULL) {
-      return DeliverBufferFrame(buffer, buffer_size, render_time_stamp_in_ns,
-                                rtp_time_stamp_in_ns);
+      return DeliverBufferFrame(buffer, buffer_size, render_time_ns,
+                                elapsed_time_ns);
     } else {
-      return DeliverTextureFrame(handle, render_time_stamp_in_ns,
-                                 rtp_time_stamp_in_ns);
+      return DeliverTextureFrame(handle, render_time_ns,
+                                 elapsed_time_ns);
     }
   }
 
   virtual bool IsTextureSupported() { return true; }
 
   int DeliverBufferFrame(unsigned char* buffer, int buffer_size,
-                         int64 elapsed_time, int64 rtp_time_stamp_in_ns) {
+                         int64 time_stamp, int64 elapsed_time) {
     WebRtcVideoFrame video_frame;
     video_frame.Alias(buffer, buffer_size, width_, height_,
-                      1, 1, elapsed_time, rtp_time_stamp_in_ns, 0);
+                      1, 1, elapsed_time, time_stamp, 0);
 
     // Sanity check on decoded frame size.
     if (buffer_size != static_cast<int>(VideoFrame::SizeOf(width_, height_))) {
@@ -308,12 +271,10 @@ class WebRtcRenderAdapter : public webrtc::ExternalRenderer {
     return ret;
   }
 
-  int DeliverTextureFrame(void* handle,
-                          int64 elapsed_time,
-                          int64 rtp_time_stamp_in_ns) {
+  int DeliverTextureFrame(void* handle, int64 time_stamp, int64 elapsed_time) {
     WebRtcTextureVideoFrame video_frame(
         static_cast<webrtc::NativeHandle*>(handle), width_, height_,
-        elapsed_time, rtp_time_stamp_in_ns);
+        elapsed_time, time_stamp);
     return renderer_->RenderFrame(&video_frame);
   }
 
@@ -925,6 +886,18 @@ static bool GetCpuOveruseOptions(const VideoOptions& options,
     // Use method based on encode usage.
     overuse_options->low_encode_usage_threshold_percent = underuse_threshold;
     overuse_options->high_encode_usage_threshold_percent = overuse_threshold;
+#ifdef USE_WEBRTC_DEV_BRANCH
+    // Set optional thresholds, if configured.
+    int underuse_rsd_threshold = 0;
+    if (options.cpu_underuse_encode_rsd_threshold.Get(
+        &underuse_rsd_threshold)) {
+      overuse_options->low_encode_time_rsd_threshold = underuse_rsd_threshold;
+    }
+    int overuse_rsd_threshold = 0;
+    if (options.cpu_overuse_encode_rsd_threshold.Get(&overuse_rsd_threshold)) {
+      overuse_options->high_encode_time_rsd_threshold = overuse_rsd_threshold;
+    }
+#endif
   } else {
     // Use default method based on capture jitter.
     overuse_options->low_capture_jitter_threshold_ms =
@@ -2050,6 +2023,9 @@ bool WebRtcVideoMediaChannel::AddRecvStream(const StreamParams& sp) {
                  << " reuse default channel #"
                  << vie_channel_;
     first_receive_ssrc_ = sp.first_ssrc();
+    if (!MaybeSetRtxSsrc(sp, vie_channel_)) {
+      return false;
+    }
     if (render_started_) {
       if (engine()->vie()->render()->StartRender(vie_channel_) !=0) {
         LOG_RTCERR1(StartRender, vie_channel_);
@@ -2088,19 +2064,8 @@ bool WebRtcVideoMediaChannel::AddRecvStream(const StreamParams& sp) {
   }
   channel_iterator = recv_channels_.find(sp.first_ssrc());
 
-  // Set the corresponding RTX SSRC.
-  uint32 rtx_ssrc;
-  bool has_rtx = sp.GetFidSsrc(sp.first_ssrc(), &rtx_ssrc);
-  if (has_rtx) {
-    LOG(LS_INFO) << "Setting rtx ssrc " << rtx_ssrc << " for stream "
-                 << sp.first_ssrc();
-    if (engine()->vie()->rtp()->SetRemoteSSRCType(
-        channel_id, webrtc::kViEStreamTypeRtx, rtx_ssrc) != 0) {
-      LOG_RTCERR3(SetRemoteSSRCType, channel_id, webrtc::kViEStreamTypeRtx,
-                  rtx_ssrc);
-      return false;
-    }
-    rtx_to_primary_ssrc_[rtx_ssrc] = sp.first_ssrc();
+  if (!MaybeSetRtxSsrc(sp, channel_id)) {
+    return false;
   }
 
   // Get the default renderer.
@@ -2126,6 +2091,24 @@ bool WebRtcVideoMediaChannel::AddRecvStream(const StreamParams& sp) {
                << " registered to VideoEngine channel #"
                << channel_id << " and connected to channel #" << vie_channel_;
 
+  return true;
+}
+
+bool WebRtcVideoMediaChannel::MaybeSetRtxSsrc(const StreamParams& sp,
+                                              int channel_id) {
+  uint32 rtx_ssrc;
+  bool has_rtx = sp.GetFidSsrc(sp.first_ssrc(), &rtx_ssrc);
+  if (has_rtx) {
+    LOG(LS_INFO) << "Setting rtx ssrc " << rtx_ssrc << " for stream "
+                 << sp.first_ssrc();
+    if (engine()->vie()->rtp()->SetRemoteSSRCType(
+        channel_id, webrtc::kViEStreamTypeRtx, rtx_ssrc) != 0) {
+      LOG_RTCERR3(SetRemoteSSRCType, channel_id, webrtc::kViEStreamTypeRtx,
+                  rtx_ssrc);
+      return false;
+    }
+    rtx_to_primary_ssrc_[rtx_ssrc] = sp.first_ssrc();
+  }
   return true;
 }
 
@@ -2523,6 +2506,7 @@ bool WebRtcVideoMediaChannel::GetStats(const StatsOptions& options,
       sinfo.capture_jitter_ms = metrics.capture_jitter_ms;
       sinfo.avg_encode_ms = metrics.avg_encode_time_ms;
       sinfo.encode_usage_percent = metrics.encode_usage_percent;
+      sinfo.encode_rsd = metrics.encode_rsd;
       sinfo.capture_queue_delay_ms_per_s = metrics.capture_queue_delay_ms_per_s;
 #else
       sinfo.capture_jitter_ms = -1;
@@ -3056,10 +3040,13 @@ bool WebRtcVideoMediaChannel::SetOptions(const VideoOptions &options) {
 
   if (leaky_bucket_changed) {
     bool enable_leaky_bucket =
-        options_.video_leaky_bucket.GetWithDefaultIfUnset(false);
+        options_.video_leaky_bucket.GetWithDefaultIfUnset(true);
     LOG(LS_INFO) << "Leaky bucket is enabled? " << enable_leaky_bucket;
     for (SendChannelMap::iterator it = send_channels_.begin();
         it != send_channels_.end(); ++it) {
+      // TODO(holmer): This API will be removed as we move to the new
+      // webrtc::Call API. We should clean up this experiment when that is
+      // happening.
       if (engine()->vie()->rtp()->SetTransmissionSmoothingStatus(
           it->second->channel_id(), enable_leaky_bucket) != 0) {
         LOG_RTCERR2(SetTransmissionSmoothingStatus, it->second->channel_id(),
@@ -3602,7 +3589,7 @@ bool WebRtcVideoMediaChannel::ConfigureSending(int channel_id,
     return false;
   }
 
-  if (options_.video_leaky_bucket.GetWithDefaultIfUnset(false)) {
+  if (options_.video_leaky_bucket.GetWithDefaultIfUnset(true)) {
     if (engine()->vie()->rtp()->SetTransmissionSmoothingStatus(channel_id,
                                                                true) != 0) {
       LOG_RTCERR2(SetTransmissionSmoothingStatus, channel_id, true);
@@ -3927,9 +3914,13 @@ int WebRtcVideoMediaChannel::GetRecvChannelNum(uint32 ssrc) {
     // Check if we have an RTX stream registered on this SSRC.
     SsrcMap::iterator rtx_it = rtx_to_primary_ssrc_.find(ssrc);
     if (rtx_it != rtx_to_primary_ssrc_.end()) {
-      it = recv_channels_.find(rtx_it->second);
-      assert(it != recv_channels_.end());
-      recv_channel = it->second->channel_id();
+      if (rtx_it->second == first_receive_ssrc_) {
+        recv_channel = vie_channel_;
+      } else {
+        it = recv_channels_.find(rtx_it->second);
+        assert(it != recv_channels_.end());
+        recv_channel = it->second->channel_id();
+      }
     }
   } else {
     recv_channel = it->second->channel_id();
@@ -3990,7 +3981,7 @@ bool WebRtcVideoMediaChannel::MaybeResetVieSendCodec(
       options_.video_noise_reduction.GetWithDefaultIfUnset(false);
   int screencast_min_bitrate =
       options_.screencast_min_bitrate.GetWithDefaultIfUnset(0);
-  bool leaky_bucket = options_.video_leaky_bucket.GetWithDefaultIfUnset(false);
+  bool leaky_bucket = options_.video_leaky_bucket.GetWithDefaultIfUnset(true);
   bool denoising = !is_screencast && enable_denoising;
   bool reset_send_codec =
       target_width != cur_width || target_height != cur_height ||
