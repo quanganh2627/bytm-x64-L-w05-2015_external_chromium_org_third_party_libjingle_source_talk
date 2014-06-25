@@ -536,6 +536,7 @@ class FakeWebRtcVoiceEngine
   }
   WEBRTC_STUB(GetVADStatus, (int channel, bool& enabled,
                              webrtc::VadModes& mode, bool& disabledDTX));
+#ifdef USE_WEBRTC_DEV_BRANCH
   WEBRTC_FUNC(SetFECStatus, (int channel, bool enable)) {
     WEBRTC_CHECK_CHANNEL(channel);
     channels_[channel]->codec_fec = enable;
@@ -546,6 +547,7 @@ class FakeWebRtcVoiceEngine
     enable = channels_[channel]->codec_fec;
     return 0;
   }
+#endif  // USE_WEBRTC_DEV_BRANCH
 
   // webrtc::VoEDtmf
   WEBRTC_FUNC(SendTelephoneEvent, (int channel, int event_code,
